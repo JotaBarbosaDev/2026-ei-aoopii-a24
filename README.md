@@ -208,7 +208,132 @@ AI Agentic Harnesses:
 
 ## 📁 Estrutura do Repositório
 
-Inclui `.gitkeep` para garantir que diretórios vazios são versionados.
+```text
+.
+├── config/branding.json          # Guidelines de branding usadas pelo agente
+├── data/generated/               # Markdown/PDF gerados localmente
+├── data/memory/                  # Historico JSONL das execucoes
+├── data/public/                  # Pasta simulada de upload publico
+├── docs/OPENCLAW.md              # Como ligar o pipeline ao OpenClaw
+├── examples/sample_input.txt     # Input de demonstracao
+├── src/content_pipeline/         # Codigo do agente, ferramentas e CLI
+└── tests/                        # Testes do pipeline
+```
+
+---
+
+## ▶️ Como Executar
+
+Criar ambiente virtual e instalar o pacote:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+Executar uma demonstracao com o input de exemplo:
+
+```bash
+content-pipeline run --file examples/sample_input.txt
+```
+
+Tambem e possivel executar sem instalar, usando `PYTHONPATH`:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline run --file examples/sample_input.txt
+```
+
+O resultado inclui:
+
+- ID da execucao
+- titulo identificado
+- score de qualidade
+- numero de ciclos de melhoria
+- link para o PDF gerado
+
+---
+
+## 🔁 Loop Persistente
+
+Para demonstrar comportamento continuo de agente:
+
+```bash
+content-pipeline loop
+```
+
+Cada linha enviada no terminal e tratada como um novo input do utilizador. O agente executa o pipeline completo, gera documento, faz upload local e regista a execucao em memoria.
+
+---
+
+## 🌐 Links Publicos em Demo
+
+Por defeito, o upload devolve um link `file://` para a pasta `data/public`.
+
+Para simular hosting HTTP local:
+
+```bash
+content-pipeline serve --directory data/public --port 8000
+```
+
+Noutra janela:
+
+```bash
+PUBLIC_BASE_URL=http://127.0.0.1:8000 content-pipeline run --file examples/sample_input.txt
+```
+
+Num deployment real, este passo pode ser substituido por Google Drive, Google Docs API, S3, servidor da VM ou outro servico de hosting.
+
+---
+
+## 🧩 Ferramentas Implementadas
+
+| Ferramenta | Implementacao |
+| --- | --- |
+| `generate_content(input)` | Gera blog post, LinkedIn post, Twitter thread e newsletter |
+| `evaluate_content(content)` | Calcula score de clareza, engagement e branding |
+| `improve_content(content)` | Corrige outputs abaixo do threshold |
+| `create_document(content)` | Cria Markdown e PDF |
+| `upload_document(file)` | Copia o PDF para pasta publica e devolve URL |
+
+O provider por defeito e `demo`, para a apresentacao funcionar sem chaves de API. Para usar um endpoint real compativel com OpenAI Chat Completions:
+
+```bash
+LLM_PROVIDER=openai OPENAI_API_KEY=... OPENAI_MODEL=... content-pipeline run --file examples/sample_input.txt
+LLM_PROVIDER=openrouter OPENROUTER_API_KEY=... OPENROUTER_MODEL=... content-pipeline run --file examples/sample_input.txt
+```
+
+Tambem existe o modo generico:
+
+```bash
+LLM_PROVIDER=compatible LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=... content-pipeline run --file examples/sample_input.txt
+```
+
+---
+
+## 🧪 Testes
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
+---
+
+## 📎 Integração OpenClaw
+
+Ver instrucoes em [`docs/OPENCLAW.md`](docs/OPENCLAW.md).
+
+Resumo:
+
+1. Configurar OpenClaw com `openclaw onboard`
+2. Ligar Telegram no runtime
+3. Instruir o agente a executar:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline run --input "<mensagem do utilizador>" --json
+```
+
+4. Devolver ao utilizador o link final, score e numero de melhorias
 
 ---
 

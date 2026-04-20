@@ -1,0 +1,9 @@
+{
+  "company_name": "BrightWave Labs",
+  "audience": "marketing and product teams",
+  "voice": "clear, practical, and confident",
+  "tone_keywords": ["clear", "practical", "confident", "human"],
+  "forbidden_phrases": ["revolutionary", "game changer", "synergy"],
+  "call_to_action": "Book a short strategy call with BrightWave Labs.",
+  "language": "English"
+}
