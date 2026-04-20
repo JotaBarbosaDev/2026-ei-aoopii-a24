@@ -1,5 +1,4 @@
-1	AR Face Filters	CV
-
+24 Garment Attribute Classification
 João Barbosa - 32536
 Pedro Sousa - 31390
 
