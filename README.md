@@ -24,7 +24,7 @@ Criar um agente que:
   - LinkedIn post
   - Tweet thread
   - Newsletter section
-- Insere o conteúdo num documento (Word ou PDF)
+- Insere o conteúdo num documento (Google Docs)
 - Hospeda o documento remotamente
 - Envia ao utilizador um link para acesso
 
@@ -41,7 +41,14 @@ Criar um agente que:
 ---
 
 ### 🧠 Processamento
-- Utilização de LLMs:
+
+- O agente é orquestrado através do **OpenClaw**
+- O OpenClaw gere:
+  - execução de tarefas  
+  - utilização de ferramentas (tool calling)  
+  - ciclo de decisão do agente  
+
+- Integração com LLMs:
   - OpenAI GPT  
   - OpenRouter  
 
@@ -71,13 +78,13 @@ A partir de um único input, o agente gera:
 
 ### 📄 Exportação
 - Criação automática de documentos:
-  - Microsoft Word  
-  - PDF  
+  - Google Docs  
+  - PDF (opcional)
 
 ---
 
 ### ☁️ Hosting
-- Upload do documento para servidor remoto  
+- Upload do documento para servidor remoto ou Google Drive  
 - Geração de link público  
 
 ---
@@ -99,21 +106,23 @@ O sistema cumpre os princípios de um agente autónomo:
 - Melhora outputs através de auto-avaliação  
 - Aprende com execuções anteriores (histórico)  
 
+Estas capacidades são suportadas pelo OpenClaw, que permite a execução de agentes com comportamento autónomo e iterativo.
+
 ---
 
 ## 🔄 Pipeline do Sistema
 
 - Input (Telegram / WhatsApp / Discord)  
   ↓  
-- Processamento (LLM)  
+- Processamento (OpenClaw + LLM)  
   ↓  
 - Adaptação ao Branding (Figma-based)  
   ↓  
 - Geração Multi-Formato  
   ↓  
-- Criação de Documento (Word/PDF)  
+- Criação de Documento (Google Docs)  
   ↓  
-- Upload para servidor  
+- Upload / Partilha (Google Drive)  
   ↓  
 - Envio de link ao utilizador  
 
@@ -123,11 +132,12 @@ O sistema cumpre os princípios de um agente autónomo:
 
 - SSH → VM  
   ↓  
-- Backend (Python)  
+- OpenClaw Agent Runtime  
   ↓  
-- LLM Processing  
-  - OpenAI  
-  - OpenRouter  
+- Tools:
+  - LLM (OpenAI / OpenRouter)  
+  - Google Docs / Drive API  
+  - File Upload  
   ↓  
 - Outputs:
   - Telegram  
@@ -139,28 +149,39 @@ O sistema cumpre os princípios de um agente autónomo:
 ## 🧪 Tecnologias
 
 - Python (backend)  
+- OpenClaw  
 - LLM APIs (OpenAI, OpenRouter)  
 - Telegram Bot API  
-- python-docx / ferramentas PDF  
+- Google Docs API / Google Drive API  
 - VM para hosting remoto  
 
 ---
 
-## ⚡ Frameworks de Agente
-
-O agente pode ser implementado utilizando uma das seguintes abordagens:
+## ⚡ Framework de Agente
 
 ### OpenClaw
+
+O OpenClaw é utilizado como framework principal para implementação do agente.
+
+Responsabilidades:
+- Orquestração do fluxo do agente  
+- Gestão de ferramentas  
+- Execução de tarefas iterativas  
+- Suporte a loops persistentes  
+
+Comandos principais:
 - `openclaw onboard`  
 - `openclaw tui`  
 
-### Alternativa: AI Agentic Harnesses
+---
+
+### Alternativa (não utilizada)
+
+AI Agentic Harnesses:
 - Hermes  
 - Codex  
 - Claude Code  
 - Gemini  
-
-👉 Apenas uma abordagem será utilizada na implementação.
 
 ---
 
@@ -179,8 +200,8 @@ O agente pode ser implementado utilizando uma das seguintes abordagens:
 1. Enviar conteúdo para o bot (Telegram)  
 2. O agente processa o input  
 3. Gera conteúdos multi-plataforma  
-4. Cria documento (Word/PDF)  
-5. Faz upload para servidor  
+4. Cria documento (Google Docs)  
+5. Partilha documento (link público)  
 6. Devolve link ao utilizador  
 
 ---
@@ -195,4 +216,4 @@ Inclui `.gitkeep` para garantir que diretórios vazios são versionados.
 
 O projeto implementa um agente de IA capaz de transformar um único input em múltiplos conteúdos adaptados a diferentes plataformas, respeitando o branding de uma empresa, com geração automática de documentos e distribuição remota.
 
-O agente apresenta comportamento autónomo, com capacidade de avaliação, melhoria contínua e execução persistente.
+O agente apresenta comportamento autónomo, com capacidade de avaliação, melhoria contínua e execução persistente, suportado pelo framework OpenClaw.
