@@ -9,7 +9,7 @@ from typing import Callable
 from .agent import ContentPipelineAgent
 from .config import load_config
 from .env import load_local_env, required_env
-from .models import PipelineResult
+from .models import ImageAsset, PipelineResult
 from .tools import select_llm_provider
 
 try:
@@ -108,6 +108,16 @@ async def send_pipeline_result(update: Update, result: PipelineResult) -> None:
     if not update.message:
         return
 
+    if result.images:
+        for image in result.images:
+            await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
+            with Path(image.path).open("rb") as image_file:
+                await update.message.reply_photo(
+                    photo=image_file,
+                    caption=build_image_caption(image),
+                    parse_mode="HTML",
+                )
+
     await update.message.chat.send_action(ChatAction.UPLOAD_DOCUMENT)
 
     caption = build_result_caption(result)
@@ -128,6 +138,7 @@ def build_result_caption(result: PipelineResult) -> str:
         f"📰 <b>Tema:</b> {escape(topic)}",
         f"📝 <b>Resumo:</b> {escape(description)}",
         f"📄 <b>Ficheiro:</b> {escape(result.document.download_name or Path(result.document.path).name)}",
+        f"🖼️ <b>Imagens geradas:</b> {len(result.images)}",
         f"📊 <b>Score de qualidade:</b> {result.evaluation.overall}/10",
         f"🔁 <b>Melhorias automaticas:</b> {result.iterations}",
     ]
@@ -165,6 +176,7 @@ def build_help_message() -> str:
         "- extrai o conteudo\n"
         "- aplica branding\n"
         "- gera blog, LinkedIn, thread e newsletter\n"
+        "- gera imagens para blog, LinkedIn, X e newsletter\n"
         "- avalia qualidade\n"
         "- melhora se necessario\n"
         "- cria e envia o PDF\n\n"
@@ -221,6 +233,13 @@ def _best_description(result: PipelineResult) -> str:
     return shorten(result.source.summary, width=160, placeholder="...")
 
 
+def build_image_caption(image: ImageAsset) -> str:
+    return (
+        f"<b>🖼️ Imagem {escape(_platform_label(image.platform))}</b>\n"
+        f"<b>Dimensoes:</b> {image.width}x{image.height}"
+    )
+
+
 def _format_progress_message(text: str) -> str:
     mapping = {
         "A analisar o input recebido.": "🔎 A analisar o input recebido.",
@@ -231,8 +250,20 @@ def _format_progress_message(text: str) -> str:
         "A avaliar qualidade e alinhamento com o branding.": "📊 A avaliar qualidade e alinhamento com o branding.",
         "A melhorar o conteudo com base na avaliacao.": "🛠️ A melhorar o conteudo com base na avaliacao.",
         "A reavaliar depois das melhorias.": "📈 A reavaliar depois das melhorias.",
+        "A gerar assets visuais para cada canal.": "🖼️ A gerar assets visuais para cada canal.",
+        "Nao foi possivel gerar os assets visuais. Vou continuar com o documento.": "⚠️ Nao foi possivel gerar os assets visuais. Vou continuar com o documento.",
         "A criar o documento final.": "📄 A criar o documento final.",
         "A preparar o ficheiro para entrega.": "📦 A preparar o ficheiro para entrega.",
         "Concluido. Vou enviar o PDF.": "✅ Concluido. Vou enviar o PDF.",
     }
     return mapping.get(text, text)
+
+
+def _platform_label(platform: str) -> str:
+    labels = {
+        "blog": "para Blog",
+        "linkedin": "para LinkedIn",
+        "twitter": "para X/Twitter",
+        "newsletter": "para Newsletter",
+    }
+    return labels.get(platform, platform)

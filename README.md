@@ -1,11 +1,11 @@
-# Agent: Content Pipeline
+# 🤖 Agent: Content Pipeline
 **Project 24 – Agent Systems**  
 **João Barbosa – 32536**  
 **Pedro Sousa – 31390**
 
 ---
 
-## Descrição
+## 🧾 Descrição
 
 Este projeto implementa um **agente de pipeline de conteúdo** que recebe um único input, interpreta-o, adapta-o ao branding de uma empresa, gera vários formatos de conteúdo, avalia a qualidade, melhora o resultado se necessário e cria um documento final.
 
@@ -20,7 +20,7 @@ O foco do projeto é demonstrar:
 
 ---
 
-## Estado Atual
+## 🚦 Estado Atual
 
 O projeto está funcional com a seguinte arquitetura:
 
@@ -39,6 +39,11 @@ Neste momento o sistema:
   - LinkedIn post
   - Twitter/X thread
   - newsletter
+- gera imagens para:
+  - blog
+  - LinkedIn
+  - X/Twitter
+  - newsletter
 - avalia clareza, engagement e branding
 - melhora automaticamente o conteúdo se o score for baixo
 - cria documento Markdown e PDF
@@ -48,7 +53,7 @@ Neste momento o sistema:
 
 ---
 
-## Arquitetura Atual
+## 🏗️ Arquitetura Atual
 
 Durante o desenvolvimento, a arquitetura foi estabilizada para:
 
@@ -56,7 +61,7 @@ Durante o desenvolvimento, a arquitetura foi estabilizada para:
 - **Groq** como provider LLM via API
 - **pipeline Python local** como motor principal de processamento
 
-### Justificação da Arquitetura Atual
+### ✅ Justificação da Arquitetura Atual
 
 Esta arquitetura foi escolhida por razões práticas e técnicas:
 
@@ -72,7 +77,7 @@ Telegram -> bot Python -> pipeline Python -> Groq
 
 ---
 
-## Pipeline Atual
+## 🔄 Pipeline Atual
 
 ```text
 Utilizador envia texto ou link no Telegram
@@ -85,6 +90,8 @@ Tradução para português quando necessário
         ↓
 Geração multi-formato com Groq
         ↓
+Geração de imagens via Cloudflare Workers AI
+        ↓
 Avaliação de qualidade
         ↓
 Melhoria automática se necessário
@@ -96,14 +103,14 @@ Resposta no Telegram com o PDF
 
 ---
 
-## Funcionalidades Implementadas
+## ⚙️ Funcionalidades Implementadas
 
-### Entrada
+### 📥 Entrada
 
 - Texto livre
 - Link para artigo/página
 
-### Processamento
+### 🧠 Processamento
 
 - Extração e normalização de input
 - Identificação de título
@@ -111,7 +118,7 @@ Resposta no Telegram com o PDF
 - Deteção simples de idioma
 - Tradução automática para português quando a fonte está em inglês
 
-### Branding
+### 🎨 Branding
 
 - Branding local através de [`config/branding.json`](config/branding.json)
 - Ajuste de:
@@ -120,7 +127,7 @@ Resposta no Telegram com o PDF
   - palavras proibidas
   - call to action
 
-### Geração de Conteúdo
+### ✍️ Geração de Conteúdo
 
 - Blog post
 - LinkedIn post
@@ -129,7 +136,16 @@ Resposta no Telegram com o PDF
 
 Cada formato é gerado com diferenças estruturais e de tom. Não existe simples copy-paste entre outputs.
 
-### Avaliação e Melhoria
+### 🖼️ Geração de Imagens
+
+- imagem para blog
+- imagem para LinkedIn
+- imagem para X/Twitter
+- imagem para newsletter
+- geração remota via Cloudflare Workers AI
+- tema visual alinhado com a notícia e com o branding da empresa
+
+### 📊 Avaliação e Melhoria
 
 - Scoring por:
   - clareza
@@ -137,12 +153,12 @@ Cada formato é gerado com diferenças estruturais e de tom. Não existe simples
   - branding
 - auto-correction loop até ao threshold configurado
 
-### Exportação
+### 📄 Exportação
 
 - Markdown
 - PDF
 
-### Resposta no Telegram
+### 💬 Resposta no Telegram
 
 - feedback de progresso
 - PDF enviado diretamente no chat
@@ -154,19 +170,20 @@ Cada formato é gerado com diferenças estruturais e de tom. Não existe simples
   - melhorias
   - link, quando disponível
 
-### Memória
+### 🗂️ Memória
 
 - histórico simples em JSONL
 - loop persistente local
 
-### Integração Externa
+### 🌐 Integração Externa
 
 - Groq via API
 - Bot Telegram funcional
+- Cloudflare Workers AI para geração de imagens
 
 ---
 
-## O Que Ainda Falta
+## 🚧 O Que Ainda Falta
 
 Para o projeto ficar mais próximo da versão completa descrita no enunciado, ainda faltam estas partes:
 
@@ -193,7 +210,7 @@ Para o projeto ficar mais próximo da versão completa descrita no enunciado, ai
 
 ---
 
-## Estrutura do Repositório
+## 🗃️ Estrutura do Repositório
 
 ```text
 .
@@ -213,7 +230,7 @@ Para o projeto ficar mais próximo da versão completa descrita no enunciado, ai
 
 ---
 
-## Configuração
+## 🔐 Configuração
 
 O projeto lê automaticamente `.env` e `.env.local`.
 
@@ -224,6 +241,9 @@ LLM_PROVIDER=groq
 GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=llama-3.1-8b-instant
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+CLOUDFLARE_API_TOKEN=your-cloudflare-api-token
+CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
+CLOUDFLARE_IMAGE_MODEL=@cf/bytedance/stable-diffusion-xl-lightning
 ```
 
 Variáveis opcionais:
@@ -236,9 +256,9 @@ Isto permite gerar links HTTP quando estiveres a servir a pasta `data/public`.
 
 ---
 
-## Guia de Utilização
+## 🚀 Guia de Utilização
 
-### 1. Clonar o projeto
+### 1. 📥 Clonar o projeto
 
 Com SSH:
 
@@ -254,14 +274,14 @@ git clone https://github.com/JotaBarbosaDev/2026-ei-aoopii-a18.git
 cd 2026-ei-aoopii-a18
 ```
 
-### 2. Criar ambiente virtual
+### 2. 🧪 Criar ambiente virtual
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Instalar dependências
+### 3. 📦 Instalar dependências
 
 Como neste Mac o caminho do projeto contém `º`, o `pip install -e .` pode falhar em modo editable.  
 Por isso, a forma mais estável aqui é instalar apenas as dependências necessárias:
@@ -271,7 +291,7 @@ python3 -m pip install --upgrade pip
 python3 -m pip install certifi deep-translator reportlab "python-telegram-bot>=22,<23"
 ```
 
-### 4. Configurar o `.env`
+### 4. ⚙️ Configurar o `.env`
 
 Cria o ficheiro `.env` a partir do exemplo:
 
@@ -294,7 +314,7 @@ Opcional:
 PUBLIC_BASE_URL=http://127.0.0.1:8000
 ```
 
-### 5. Arrancar a pipeline completa
+### 5. ▶️ Arrancar a pipeline completa
 
 O comando mais simples para demo é:
 
@@ -307,10 +327,11 @@ Este comando arranca:
 - servidor HTTP local para a pasta `data/public`
 - bot Telegram
 - configuração automática do link local para os PDFs
+- envio dos assets visuais gerados por plataforma
 
 Se a porta `8000` já estiver ocupada, o projeto tenta usar a próxima porta livre.
 
-### 6. Encontrar o bot no Telegram
+### 6. 📱 Encontrar o bot no Telegram
 
 No Telegram, procura por:
 
@@ -330,7 +351,7 @@ Se quiseres ver a ajuda disponível:
 /help
 ```
 
-### 7. Testar o fluxo completo
+### 7. ✅ Testar o fluxo completo
 
 Podes testar de duas formas:
 
@@ -357,7 +378,7 @@ Resultado esperado:
 - envia o PDF diretamente no Telegram
 - inclui tema, resumo, ficheiro, score, melhorias e link, quando disponível
 
-### 8. Parar a execução
+### 8. 🛑 Parar a execução
 
 No terminal onde arrancaste a stack:
 
@@ -367,9 +388,9 @@ Ctrl+C
 
 ---
 
-## Como Executar
+## ▶️ Como Executar
 
-### Nota sobre este repositório
+### ⚠️ Nota sobre este repositório
 
 Neste Mac, o caminho do projeto contém o carácter `º`, e em algumas instalações isso faz o `pip install -e .` falhar em modo editable.  
 Por esse motivo, a forma mais estável de correr o projeto aqui é:
@@ -378,7 +399,7 @@ Por esse motivo, a forma mais estável de correr o projeto aqui é:
 PYTHONPATH=src python3 -m content_pipeline ...
 ```
 
-### Executar uma demo local
+### 🧪 Executar uma demo local
 
 ```bash
 PYTHONPATH=src python3 -m content_pipeline run --file examples/sample_input.txt
@@ -396,31 +417,31 @@ JSON completo:
 PYTHONPATH=src python3 -m content_pipeline run --file examples/sample_input.txt --json
 ```
 
-### Loop persistente local
+### ♻️ Loop persistente local
 
 ```bash
 PYTHONPATH=src python3 -m content_pipeline loop
 ```
 
-### Histórico
+### 🗃️ Histórico
 
 ```bash
 PYTHONPATH=src python3 -m content_pipeline history --limit 5
 ```
 
-### Servir PDFs localmente por HTTP
+### 🌍 Servir PDFs localmente por HTTP
 
 ```bash
 PYTHONPATH=src python3 -m content_pipeline serve --directory data/public --port 8000
 ```
 
-### Arrancar o bot Telegram
+### 🤖 Arrancar o bot Telegram
 
 ```bash
 PYTHONPATH=src python3 -m content_pipeline telegram-bot
 ```
 
-### Arrancar a stack completa
+### 🚀 Arrancar a stack completa
 
 Este é o comando mais útil para demo, porque arranca:
 
@@ -436,7 +457,7 @@ Se a porta `8000` já estiver ocupada, o projeto tenta usar a seguinte porta liv
 
 ---
 
-## Bot Telegram
+## 📱 Bot Telegram
 
 O bot Telegram já está integrado no projeto.
 
@@ -451,8 +472,10 @@ Comportamento atual:
 - aceita texto e links enviados em mensagem
 - chama o pipeline internamente
 - traduz conteúdo para português quando necessário
+- gera imagens por plataforma quando a Cloudflare está configurada
 - gera o PDF
 - devolve o PDF diretamente no chat
+- envia as imagens geradas antes do PDF
 - mostra feedback de progresso durante o processamento
 - mostra score e número de melhorias no caption
 - destaca os campos fixos no caption para facilitar leitura
@@ -466,7 +489,7 @@ Limitações atuais:
 
 ---
 
-## Ferramentas Implementadas
+## 🛠️ Ferramentas Implementadas
 
 | Ferramenta | Implementação atual |
 | --- | --- |
@@ -478,11 +501,12 @@ Limitações atuais:
 
 ---
 
-## Tecnologias
+## 🧰 Tecnologias
 
 - Python
 - Groq API
 - Telegram Bot API
+- Cloudflare Workers AI
 - deep-translator
 - reportlab
 - JSONL para memória simples
@@ -496,7 +520,7 @@ Tecnologias planeadas mas ainda não integradas:
 
 ---
 
-## Testes
+## ✅ Testes
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests
@@ -504,9 +528,9 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 ---
 
-## Histórico e Decisões
+## 🧭 Histórico e Decisões
 
-### 1. Ideia inicial
+### 1. 💡 Ideia inicial
 
 - arquitetura pensada como agente com canal de mensagens
 - Telegram como canal principal
@@ -514,7 +538,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** definir primeiro o fluxo end-to-end do agente.
 
-### 2. Implementação do núcleo do pipeline
+### 2. 🧱 Implementação do núcleo do pipeline
 
 - criação do agente em Python
 - geração multi-formato
@@ -525,7 +549,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** garantir primeiro a parte central do projeto antes das integrações externas.
 
-### 3. Integração real com Groq
+### 3. 🧠 Integração real com Groq
 
 - suporte explícito a `LLM_PROVIDER=groq`
 - leitura automática de `.env`
@@ -533,7 +557,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** usar um LLM remoto gratuito e estável sem correr modelos localmente.
 
-### 4. Integração do bot Telegram
+### 4. 📲 Integração do bot Telegram
 
 - criação do módulo `telegram_bot.py`
 - comando CLI `telegram-bot`
@@ -542,7 +566,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** cumprir o requisito de interação por mensagem e permitir uma demo end-to-end.
 
-### 5. Tradução automática e normalização de idioma
+### 5. 🌍 Tradução automática e normalização de idioma
 
 - deteção simples de idioma na fonte
 - tradução da fonte em inglês para português
@@ -550,7 +574,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** manter o documento final coerente para demonstração em português, independentemente do idioma original da notícia.
 
-### 6. Melhoria da experiência no Telegram
+### 6. ✨ Melhoria da experiência no Telegram
 
 - mensagens de progresso
 - caption final com destaque visual
@@ -559,9 +583,17 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** tornar a demo mais estável e mais legível durante a apresentação.
 
+### 7. 🖼️ Geração remota de imagens
+
+- integração com Cloudflare Workers AI
+- geração de imagens com dimensões próprias por canal
+- envio das imagens no Telegram antes do PDF
+
+**Motivo:** complementar cada saída textual com assets visuais específicos para blog e redes sociais.
+
 ---
 
-## Resumo
+## 📌 Resumo
 
 O projeto já demonstra um agente funcional com:
 
@@ -573,6 +605,7 @@ O projeto já demonstra um agente funcional com:
 - integração com Telegram
 - uso de LLM real via Groq
 - tradução automática para português
+- geração remota de imagens por plataforma
 - geração e entrega de PDF com feedback no Telegram
 
 O que falta para a versão mais completa é sobretudo:

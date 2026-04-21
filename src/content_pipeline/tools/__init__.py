@@ -6,6 +6,7 @@ from .content_tools import (
     normalize_bundle_for_portuguese,
 )
 from .document_tools import create_document, upload_document
+from .image_tools import generate_social_images
 from .input_tools import extract_input
 from .llm_provider import OpenAICompatibleLLMProvider, select_llm_provider
 from .translation_tools import translate_bundle_to_portuguese, translate_source_to_portuguese
@@ -16,6 +17,7 @@ __all__ = [
     "create_document",
     "evaluate_content",
     "extract_input",
+    "generate_social_images",
     "generate_content",
     "improve_content",
     "normalize_bundle_for_portuguese",

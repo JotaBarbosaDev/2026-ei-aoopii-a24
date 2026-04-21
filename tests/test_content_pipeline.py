@@ -9,8 +9,9 @@ from unittest.mock import patch
 from content_pipeline.__main__ import _build_public_base_url, _find_available_port
 from content_pipeline.agent import ContentPipelineAgent
 from content_pipeline.config import AgentConfig
-from content_pipeline.models import BrandingProfile, ContentBundle, EvaluationResult
+from content_pipeline.models import BrandingProfile, ContentBundle, EvaluationResult, ImageAsset
 from content_pipeline.telegram_bot import (
+    build_image_caption,
     build_help_message,
     build_result_caption,
     build_welcome_message,
@@ -20,6 +21,7 @@ from content_pipeline.tools import (
     evaluate_content,
     extract_input,
     generate_content,
+    generate_social_images,
     improve_content,
     normalize_bundle_for_portuguese,
     translate_bundle_to_portuguese,
@@ -155,7 +157,8 @@ class ContentPipelineTests(unittest.TestCase):
             agent = ContentPipelineAgent(config)
 
             with patch("content_pipeline.agent.translate_source_to_portuguese", side_effect=lambda value: value):
-                result = agent.run(SAMPLE_INPUT)
+                with patch("content_pipeline.agent.generate_social_images", return_value=[]):
+                    result = agent.run(SAMPLE_INPUT)
 
             self.assertGreaterEqual(result.evaluation.overall, 7.5)
             self.assertGreaterEqual(result.iterations, 1)
@@ -176,7 +179,8 @@ class ContentPipelineTests(unittest.TestCase):
             updates: list[str] = []
 
             with patch("content_pipeline.agent.translate_source_to_portuguese", side_effect=lambda value: value):
-                agent.run(SAMPLE_INPUT, status_callback=updates.append)
+                with patch("content_pipeline.agent.generate_social_images", return_value=[]):
+                    agent.run(SAMPLE_INPUT, status_callback=updates.append)
 
         self.assertGreaterEqual(len(updates), 6)
         self.assertEqual(updates[0], "A analisar o input recebido.")
@@ -280,6 +284,82 @@ class ContentPipelineTests(unittest.TestCase):
         self.assertTrue(translated.twitter_thread[0].startswith("PT::"))
         self.assertTrue(translated.newsletter.startswith("PT::"))
 
+    def test_generate_social_images_creates_expected_assets(self) -> None:
+        source = extract_input(SAMPLE_INPUT)
+        content = generate_content(source, _branding())
+
+        class FakeResponse:
+            def __init__(self) -> None:
+                self.headers = {"content-type": "image/png"}
+
+            def read(self) -> bytes:
+                return b"\x89PNG\r\n\x1a\nfake"
+
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            generated = Path(tmp) / "generated"
+            public = Path(tmp) / "public"
+            with patch("content_pipeline.tools.image_tools.load_local_env"):
+                with patch(
+                    "content_pipeline.tools.image_tools.urlopen",
+                    return_value=FakeResponse(),
+                ):
+                    with patch.dict(
+                        os.environ,
+                        {
+                            "CLOUDFLARE_API_TOKEN": "token",
+                            "CLOUDFLARE_ACCOUNT_ID": "account",
+                        },
+                        clear=False,
+                    ):
+                        assets = generate_social_images(
+                            source=source,
+                            content=content,
+                            branding=_branding(),
+                            run_id="content-pipeline-20260421-123456-abcd1234",
+                            output_dir=generated,
+                            public_dir=public,
+                            public_base_url="http://127.0.0.1:8000",
+                        )
+
+            self.assertEqual(len(assets), 4)
+            self.assertEqual(assets[0].platform, "blog")
+            self.assertTrue(all(asset.path.exists() for asset in assets))
+            self.assertTrue(all(asset.url.startswith("http://127.0.0.1:8000/images/") for asset in assets))
+
+    def test_agent_includes_generated_images_in_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = AgentConfig(
+                branding=_branding(),
+                generated_dir=root / "generated",
+                public_dir=root / "public",
+                memory_path=root / "memory" / "executions.jsonl",
+            )
+            agent = ContentPipelineAgent(config)
+            fake_image = ImageAsset(
+                platform="linkedin",
+                width=1200,
+                height=632,
+                path=root / "generated" / "image.png",
+                url="http://127.0.0.1:8000/images/image.png",
+                prompt="prompt",
+            )
+            fake_image.path.parent.mkdir(parents=True, exist_ok=True)
+            fake_image.path.write_bytes(b"png")
+
+            with patch("content_pipeline.agent.translate_source_to_portuguese", side_effect=lambda value: value):
+                with patch("content_pipeline.agent.generate_social_images", return_value=[fake_image]):
+                    result = agent.run(SAMPLE_INPUT)
+
+        self.assertEqual(len(result.images), 1)
+        self.assertEqual(result.images[0].platform, "linkedin")
+
     def test_structured_llm_content_is_normalized_to_text(self) -> None:
         bundle = _content_bundle_from_json(
             {
@@ -320,16 +400,33 @@ class ContentPipelineTests(unittest.TestCase):
             )
             agent = ContentPipelineAgent(config)
             with patch("content_pipeline.agent.translate_source_to_portuguese", side_effect=lambda value: value):
-                result = agent.run(SAMPLE_INPUT)
+                with patch("content_pipeline.agent.generate_social_images", return_value=[]):
+                    result = agent.run(SAMPLE_INPUT)
 
         caption = build_result_caption(result)
 
         self.assertIn("<b>✅ Documento gerado com sucesso</b>", caption)
         self.assertIn("📰 <b>Tema:</b>", caption)
+        self.assertIn("🖼️ <b>Imagens geradas:</b>", caption)
         self.assertIn("📊 <b>Score de qualidade:</b>", caption)
         self.assertIn("🔁 <b>Melhorias automaticas:</b>", caption)
         self.assertIn("🌍 <b>Idioma:</b>", caption)
         self.assertNotIn("🔗 <b>Link:</b>", caption)
+
+    def test_image_caption_reports_platform_and_dimensions(self) -> None:
+        image = ImageAsset(
+            platform="twitter",
+            width=1600,
+            height=896,
+            path=Path("/tmp/image.png"),
+            url="http://127.0.0.1:8000/images/image.png",
+            prompt="prompt",
+        )
+
+        caption = build_image_caption(image)
+
+        self.assertIn("Imagem para X/Twitter", caption)
+        self.assertIn("1600x896", caption)
 
     def test_telegram_messages_explain_capabilities(self) -> None:
         welcome = build_welcome_message()

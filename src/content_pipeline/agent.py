@@ -12,6 +12,7 @@ from .tools import (
     DemoLLMProvider,
     create_document,
     extract_input,
+    generate_social_images,
     normalize_bundle_for_portuguese,
     translate_bundle_to_portuguese,
     translate_source_to_portuguese,
@@ -79,6 +80,24 @@ class ContentPipelineAgent:
             evaluation = self.llm.evaluate_content(content, self.config.branding)
             iterations += 1
 
+        self._notify(status_callback, "A gerar assets visuais para cada canal.")
+        try:
+            images = generate_social_images(
+                source=source,
+                content=content,
+                branding=self.config.branding,
+                run_id=run_id,
+                output_dir=self.config.generated_dir / "images",
+                public_dir=self.config.public_dir / "images",
+                public_base_url=self.config.public_base_url,
+            )
+        except Exception:
+            images = []
+            self._notify(
+                status_callback,
+                "Nao foi possivel gerar os assets visuais. Vou continuar com o documento.",
+            )
+
         self._notify(status_callback, "A criar o documento final.")
         document = create_document(
             content=content,
@@ -105,6 +124,7 @@ class ContentPipelineAgent:
             document=document,
             upload=upload,
             iterations=iterations,
+            images=images,
         )
         self._remember(result)
         self._notify(status_callback, "Concluido. Vou enviar o PDF.")
@@ -139,6 +159,7 @@ class ContentPipelineAgent:
                 "iterations": result.iterations,
                 "document_path": str(result.document.path),
                 "public_url": result.upload.url,
+                "image_count": len(result.images),
             }
         )
 

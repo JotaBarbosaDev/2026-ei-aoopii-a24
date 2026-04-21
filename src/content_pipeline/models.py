@@ -90,6 +90,16 @@ class DocumentArtifact:
 
 
 @dataclass(frozen=True)
+class ImageAsset:
+    platform: str
+    width: int
+    height: int
+    path: Path
+    url: str
+    prompt: str
+
+
+@dataclass(frozen=True)
 class UploadResult:
     url: str
     public_path: Path
@@ -104,6 +114,7 @@ class PipelineResult:
     document: DocumentArtifact
     upload: UploadResult
     iterations: int
+    images: list[ImageAsset] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -123,4 +134,14 @@ class PipelineResult:
             "document_name": self.document.download_name,
             "url": self.upload.url,
             "iterations": self.iterations,
+            "images": [
+                {
+                    "platform": image.platform,
+                    "width": image.width,
+                    "height": image.height,
+                    "path": str(image.path),
+                    "url": image.url,
+                }
+                for image in self.images
+            ],
         }
