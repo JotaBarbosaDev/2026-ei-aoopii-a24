@@ -253,6 +253,137 @@ Isto permite gerar links HTTP quando estiveres a servir a pasta `data/public`.
 
 ---
 
+## Guia de Utilização
+
+### 1. Clonar o projeto
+
+Com SSH:
+
+```bash
+git clone git@github.com:JotaBarbosaDev/2026-ei-aoopii-a18.git
+cd 2026-ei-aoopii-a18
+```
+
+Se preferires HTTPS:
+
+```bash
+git clone https://github.com/JotaBarbosaDev/2026-ei-aoopii-a18.git
+cd 2026-ei-aoopii-a18
+```
+
+### 2. Criar ambiente virtual
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Instalar dependências
+
+Como neste Mac o caminho do projeto contém `º`, o `pip install -e .` pode falhar em modo editable.  
+Por isso, a forma mais estável aqui é instalar apenas as dependências necessárias:
+
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install certifi deep-translator reportlab "python-telegram-bot>=22,<23"
+```
+
+### 4. Configurar o `.env`
+
+Cria o ficheiro `.env` a partir do exemplo:
+
+```bash
+cp .env.example .env
+```
+
+Depois preenche:
+
+```bash
+LLM_PROVIDER=groq
+GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=llama-3.1-8b-instant
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+```
+
+Opcional:
+
+```bash
+PUBLIC_BASE_URL=http://127.0.0.1:8000
+```
+
+### 5. Arrancar a pipeline completa
+
+O comando mais simples para demo é:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline telegram-stack
+```
+
+Este comando arranca:
+
+- servidor HTTP local para a pasta `data/public`
+- bot Telegram
+- configuração automática do link local para os PDFs
+
+Se a porta `8000` já estiver ocupada, o projeto tenta usar a próxima porta livre.
+
+### 6. Encontrar o bot no Telegram
+
+No Telegram, procura por:
+
+```text
+@NewPostAOOPBot
+```
+
+Abre o chat e envia:
+
+```text
+/start
+```
+
+Se quiseres ver a ajuda disponível:
+
+```text
+/help
+```
+
+### 7. Testar o fluxo completo
+
+Podes testar de duas formas:
+
+1. Enviar texto diretamente
+2. Enviar um link para uma notícia ou artigo
+
+Exemplos:
+
+```text
+https://www.publico.pt/...
+```
+
+ou
+
+```text
+A inteligência artificial está a mudar a forma como as equipas de marketing transformam pesquisa em conteúdo...
+```
+
+Resultado esperado:
+
+- o bot mostra progresso no chat
+- processa o input
+- gera o documento
+- envia o PDF diretamente no Telegram
+- inclui tema, resumo, ficheiro, score, melhorias e link, quando disponível
+
+### 8. Parar a execução
+
+No terminal onde arrancaste a stack:
+
+```bash
+Ctrl+C
+```
+
+---
+
 ## Como Executar
 
 ### Nota sobre este repositório
@@ -325,6 +456,12 @@ Se a porta `8000` já estiver ocupada, o projeto tenta usar a seguinte porta liv
 ## Bot Telegram
 
 O bot Telegram já está integrado no projeto.
+
+Bot atual:
+
+```text
+@NewPostAOOPBot
+```
 
 Comportamento atual:
 
