@@ -34,6 +34,9 @@ def main() -> int:
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8000)
 
+    bot_parser = subparsers.add_parser("telegram-bot", help="Run the Telegram bot.")
+    _add_common_config_args(bot_parser)
+
     args = parser.parse_args()
 
     if args.command == "serve":
@@ -48,6 +51,12 @@ def main() -> int:
         memory_path=args.memory_path,
     )
     agent = ContentPipelineAgent(config, llm=select_llm_provider())
+
+    if args.command == "telegram-bot":
+        from .telegram_bot import run_telegram_bot
+
+        run_telegram_bot(agent)
+        return 0
 
     if args.command == "run":
         payload = args.input if args.input is not None else args.file.read_text(encoding="utf-8")

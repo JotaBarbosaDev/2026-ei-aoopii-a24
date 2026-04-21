@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from ..env import first_env, load_local_env, required_env
 from ..models import BrandingProfile, ContentBundle, EvaluationResult, SourceContent
 from .content_tools import DemoLLMProvider, evaluate_content, improve_content
+
+try:
+    import certifi
+except ImportError:  # pragma: no cover - optional dependency at runtime
+    certifi = None
 
 
 class OpenAICompatibleLLMProvider(DemoLLMProvider):
@@ -144,12 +151,17 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://localhost/agent-content-pipeline",
                 "X-Title": "Agent Content Pipeline",
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/135.0.0.0 Safari/537.36"
+                ),
             },
             method="POST",
         )
 
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with urlopen(request, timeout=self.timeout, context=_ssl_context()) as response:
                 body = json.loads(response.read().decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise ValueError(f"LLM request failed: {exc}") from exc
@@ -167,13 +179,21 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
 
 
 def select_llm_provider() -> DemoLLMProvider:
+    load_local_env()
     provider = os.getenv("LLM_PROVIDER", "demo").lower().strip()
     if provider == "demo":
         return DemoLLMProvider()
 
+    if provider == "groq":
+        return OpenAICompatibleLLMProvider(
+            base_url=os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+            api_key=first_env("GROQ_API_KEY", "LLM_API_KEY"),
+            model=os.getenv("GROQ_MODEL", os.getenv("LLM_MODEL", "llama-3.1-8b-instant")),
+        )
+
     if provider == "openai":
-        api_key = _required_env("OPENAI_API_KEY")
-        model = _required_env("OPENAI_MODEL")
+        api_key = required_env("OPENAI_API_KEY")
+        model = required_env("OPENAI_MODEL")
         return OpenAICompatibleLLMProvider(
             base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             api_key=api_key,
@@ -181,8 +201,8 @@ def select_llm_provider() -> DemoLLMProvider:
         )
 
     if provider == "openrouter":
-        api_key = _required_env("OPENROUTER_API_KEY")
-        model = _required_env("OPENROUTER_MODEL")
+        api_key = required_env("OPENROUTER_API_KEY")
+        model = required_env("OPENROUTER_MODEL")
         return OpenAICompatibleLLMProvider(
             base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             api_key=api_key,
@@ -191,12 +211,12 @@ def select_llm_provider() -> DemoLLMProvider:
 
     if provider == "compatible":
         return OpenAICompatibleLLMProvider(
-            base_url=_required_env("LLM_BASE_URL"),
-            api_key=_required_env("LLM_API_KEY"),
-            model=_required_env("LLM_MODEL"),
+            base_url=required_env("LLM_BASE_URL"),
+            api_key=required_env("LLM_API_KEY"),
+            model=required_env("LLM_MODEL"),
         )
 
-    raise ValueError("LLM_PROVIDER must be one of: demo, openai, openrouter, compatible.")
+    raise ValueError("LLM_PROVIDER must be one of: demo, groq, openai, openrouter, compatible.")
 
 
 def _content_bundle_from_json(payload: dict[str, Any]) -> ContentBundle:
@@ -215,11 +235,10 @@ def _score(value: Any) -> float:
     return round(max(0.0, min(float(value), 10.0)), 2)
 
 
-def _required_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise ValueError(f"Missing required environment variable: {name}")
-    return value
+def _ssl_context() -> ssl.SSLContext | None:
+    if certifi is None:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
 
 
 _GENERATION_SYSTEM_PROMPT = """

@@ -266,6 +266,24 @@ Cada linha enviada no terminal e tratada como um novo input do utilizador. O age
 
 ---
 
+## 🤖 Bot Telegram
+
+Depois de adicionares `TELEGRAM_BOT_TOKEN` ao `.env`, arranca o bot com:
+
+```bash
+content-pipeline telegram-bot
+```
+
+Sem instalacao editable:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline telegram-bot
+```
+
+O bot aceita texto e links enviados em mensagem, executa o pipeline com Groq e devolve o PDF diretamente no Telegram.
+
+---
+
 ## 🌐 Links Publicos em Demo
 
 Por defeito, o upload devolve um link `file://` para a pasta `data/public`.
@@ -303,10 +321,31 @@ LLM_PROVIDER=openai OPENAI_API_KEY=... OPENAI_MODEL=... content-pipeline run --f
 LLM_PROVIDER=openrouter OPENROUTER_API_KEY=... OPENROUTER_MODEL=... content-pipeline run --file examples/sample_input.txt
 ```
 
+Para usar Groq diretamente:
+
+```bash
+LLM_PROVIDER=groq GROQ_API_KEY=... GROQ_MODEL=llama-3.1-8b-instant content-pipeline run --file examples/sample_input.txt
+```
+
+Para o bot Telegram, adiciona tambem:
+
+```bash
+TELEGRAM_BOT_TOKEN=...
+```
+
 Tambem existe o modo generico:
 
 ```bash
 LLM_PROVIDER=compatible LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=... content-pipeline run --file examples/sample_input.txt
+```
+
+O projeto tambem carrega automaticamente um ficheiro `.env` ou `.env.local` na raiz do repositorio, por exemplo:
+
+```bash
+LLM_PROVIDER=groq
+GROQ_API_KEY=...
+GROQ_MODEL=llama-3.1-8b-instant
+TELEGRAM_BOT_TOKEN=...
 ```
 
 ---

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from content_pipeline.agent import ContentPipelineAgent
 from content_pipeline.config import AgentConfig
 from content_pipeline.models import BrandingProfile
+from content_pipeline.telegram_bot import build_result_caption
 from content_pipeline.tools import (
     create_document,
     evaluate_content,
@@ -14,6 +17,7 @@ from content_pipeline.tools import (
     generate_content,
     improve_content,
 )
+from content_pipeline.tools.llm_provider import OpenAICompatibleLLMProvider, select_llm_provider
 
 
 SAMPLE_INPUT = (
@@ -99,6 +103,40 @@ class ContentPipelineTests(unittest.TestCase):
             self.assertTrue(result.document.path.exists())
             self.assertTrue(result.upload.public_path.exists())
             self.assertEqual(agent.memory.recent(1)[0]["run_id"], result.run_id)
+
+    def test_select_llm_provider_supports_groq(self) -> None:
+        with patch("content_pipeline.tools.llm_provider.load_local_env"):
+            with patch.dict(
+                os.environ,
+                {
+                    "LLM_PROVIDER": "groq",
+                    "GROQ_API_KEY": "test-key",
+                },
+                clear=True,
+            ):
+                provider = select_llm_provider()
+
+        self.assertIsInstance(provider, OpenAICompatibleLLMProvider)
+        self.assertEqual(provider.base_url, "https://api.groq.com/openai/v1")
+        self.assertEqual(provider.model, "llama-3.1-8b-instant")
+
+    def test_telegram_caption_skips_local_file_url(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = AgentConfig(
+                branding=_branding(),
+                generated_dir=root / "generated",
+                public_dir=root / "public",
+                memory_path=root / "memory" / "executions.jsonl",
+            )
+            agent = ContentPipelineAgent(config)
+            result = agent.run(SAMPLE_INPUT)
+
+        caption = build_result_caption(result)
+
+        self.assertIn("Score:", caption)
+        self.assertIn("Melhorias:", caption)
+        self.assertNotIn("Link:", caption)
 
 
 if __name__ == "__main__":

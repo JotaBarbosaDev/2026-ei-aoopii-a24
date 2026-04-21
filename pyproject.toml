@@ -12,7 +12,10 @@ authors = [
   { name = "Joao Barbosa" },
   { name = "Pedro Sousa" }
 ]
-dependencies = []
+dependencies = [
+  "certifi>=2024.2.2",
+  "python-telegram-bot>=22,<23"
+]
 
 [project.scripts]
 content-pipeline = "content_pipeline.__main__:main"
