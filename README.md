@@ -48,44 +48,27 @@ Neste momento o sistema:
 
 ---
 
-## Mudança de Arquitetura
+## Arquitetura Atual
 
-### Plano Inicial
-
-O plano inicial do projeto era usar **OpenClaw** como runtime principal do agente, com integração com Telegram e ferramentas externas.
-
-### Arquitetura Atual
-
-Durante o desenvolvimento, a arquitetura foi simplificada para:
+Durante o desenvolvimento, a arquitetura foi estabilizada para:
 
 - **bot Telegram em Python** como camada de entrada
 - **Groq** como provider LLM via API
 - **pipeline Python local** como motor principal de processamento
 
-### Justificação da Mudança de OpenClaw para Groq
+### Justificação da Arquitetura Atual
 
-Esta mudança aconteceu por razões práticas e técnicas:
+Esta arquitetura foi escolhida por razões práticas e técnicas:
 
-1. O ambiente disponível é um **MacBook Pro 2017 Intel**, com capacidade limitada para experimentar uma stack mais pesada de runtime agentic local.
-2. O objetivo da cadeira é demonstrar **tool orchestration, multi-step reasoning e pipeline autónomo**, não obrigatoriamente usar um runtime específico.
+1. O ambiente disponível é um **MacBook Pro 2017 Intel**, por isso faz sentido usar um provider remoto.
+2. O objetivo da cadeira é demonstrar **tool orchestration, multi-step reasoning e pipeline autónomo**.
 3. **Groq** permite usar modelos remotos no plano gratuito, evitando correr modelos localmente.
-4. A integração com Groq foi mais simples porque a API é **OpenAI-compatible**, o que encaixa diretamente no provider do projeto.
+4. A integração com Groq é simples porque a API é **OpenAI-compatible**.
 5. Para uma demo académica, a combinação **Telegram + Python + Groq** reduz risco, setup e tempo de integração.
-
-Importante: a mudança não foi apenas “OpenClaw por Groq”.  
-Na prática, a arquitetura passou de:
-
-```text
-Telegram -> OpenClaw -> ferramentas
-```
-
-para:
 
 ```text
 Telegram -> bot Python -> pipeline Python -> Groq
 ```
-
-Ou seja, o Groq substitui o **LLM/provider**, e o bot Python substitui a camada de runtime/orquestração que antes estava pensada para OpenClaw.
 
 ---
 
@@ -204,8 +187,8 @@ Para o projeto ficar mais próximo da versão completa descrita no enunciado, ai
    - áudio, vídeo e ficheiros ainda não são processados
    - o bot responde que esses formatos ainda não estão ligados
 
-5. **README antigo / docs antigas**
-   - `docs/OPENCLAW.md` ficou como nota histórica de uma abordagem inicialmente considerada
+5. **Documentação residual**
+   - ainda existe documentação histórica em `docs/OPENCLAW.md`
    - a arquitetura principal atual é Telegram + Groq + pipeline Python
 
 ---
@@ -218,7 +201,7 @@ Para o projeto ficar mais próximo da versão completa descrita no enunciado, ai
 ├── data/generated/               # Markdown/PDF gerados localmente
 ├── data/memory/                  # Histórico JSONL das execuções
 ├── data/public/                  # Pasta simulada de upload público
-├── docs/OPENCLAW.md              # Notas históricas da abordagem com OpenClaw
+├── docs/OPENCLAW.md              # Notas históricas de uma abordagem anterior
 ├── examples/sample_input.txt     # Input de demonstração
 ├── src/content_pipeline/         # Código principal
 │   ├── agent.py                  # Orquestra o pipeline
@@ -525,11 +508,11 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 ### 1. Ideia inicial
 
-- arquitetura pensada com OpenClaw
-- VM / runtime sempre ligado
+- arquitetura pensada como agente com canal de mensagens
 - Telegram como canal principal
+- pipeline multi-step desde o início
 
-**Motivo:** seguir uma abordagem clássica de agente com runtime dedicado.
+**Motivo:** definir primeiro o fluxo end-to-end do agente.
 
 ### 2. Implementação do núcleo do pipeline
 
@@ -542,15 +525,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** garantir primeiro a parte central do projeto antes das integrações externas.
 
-### 3. Mudança de OpenClaw para Telegram bot + Groq
-
-- abandono da dependência de OpenClaw como runtime principal
-- integração direta com Groq
-- criação de bot Telegram simples
-
-**Motivo:** reduzir complexidade, adequar ao hardware disponível e manter o projeto demonstrável no contexto académico.
-
-### 4. Integração real com Groq
+### 3. Integração real com Groq
 
 - suporte explícito a `LLM_PROVIDER=groq`
 - leitura automática de `.env`
@@ -558,7 +533,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** usar um LLM remoto gratuito e estável sem correr modelos localmente.
 
-### 5. Integração do bot Telegram
+### 4. Integração do bot Telegram
 
 - criação do módulo `telegram_bot.py`
 - comando CLI `telegram-bot`
@@ -567,7 +542,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** cumprir o requisito de interação por mensagem e permitir uma demo end-to-end.
 
-### 6. Tradução automática e normalização de idioma
+### 5. Tradução automática e normalização de idioma
 
 - deteção simples de idioma na fonte
 - tradução da fonte em inglês para português
@@ -575,7 +550,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 **Motivo:** manter o documento final coerente para demonstração em português, independentemente do idioma original da notícia.
 
-### 7. Melhoria da experiência no Telegram
+### 6. Melhoria da experiência no Telegram
 
 - mensagens de progresso
 - caption final com destaque visual
