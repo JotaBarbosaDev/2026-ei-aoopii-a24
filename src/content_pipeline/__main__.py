@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import socket
+import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -37,10 +40,23 @@ def main() -> int:
     bot_parser = subparsers.add_parser("telegram-bot", help="Run the Telegram bot.")
     _add_common_config_args(bot_parser)
 
+    stack_parser = subparsers.add_parser(
+        "telegram-stack",
+        help="Run the local document server and the Telegram bot together.",
+    )
+    _add_common_config_args(stack_parser)
+    stack_parser.add_argument("--host", default="127.0.0.1")
+    stack_parser.add_argument("--port", type=int, default=8000)
+
     args = parser.parse_args()
 
     if args.command == "serve":
         return _serve(args.directory, args.host, args.port)
+
+    if args.command == "telegram-stack":
+        resolved_port = _find_available_port(args.host, args.port)
+        args.port = resolved_port
+        os.environ.setdefault("PUBLIC_BASE_URL", _build_public_base_url(args.host, args.port))
 
     config = load_config(
         branding_path=args.branding,
@@ -57,6 +73,16 @@ def main() -> int:
 
         run_telegram_bot(agent)
         return 0
+
+    if args.command == "telegram-stack":
+        from .telegram_bot import run_telegram_bot
+
+        return _run_telegram_stack(
+            agent=agent,
+            public_dir=args.public_dir,
+            host=args.host,
+            port=args.port,
+        )
 
     if args.command == "run":
         payload = args.input if args.input is not None else args.file.read_text(encoding="utf-8")
@@ -105,6 +131,52 @@ def _serve(directory: Path, host: str, port: int) -> int:
     finally:
         server.server_close()
     return 0
+
+
+def _run_telegram_stack(
+    agent: ContentPipelineAgent,
+    public_dir: Path,
+    host: str,
+    port: int,
+) -> int:
+    from .telegram_bot import run_telegram_bot
+
+    server = _build_server(public_dir, host, port)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    print(f"Serving {public_dir.resolve()} at {_build_public_base_url(host, port)}/")
+    print("Starting Telegram bot.")
+    try:
+        run_telegram_bot(agent)
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)
+    return 0
+
+
+def _build_server(directory: Path, host: str, port: int) -> ThreadingHTTPServer:
+    directory.mkdir(parents=True, exist_ok=True)
+    handler = partial(SimpleHTTPRequestHandler, directory=str(directory))
+    return ThreadingHTTPServer((host, port), handler)
+
+
+def _build_public_base_url(host: str, port: int) -> str:
+    return f"http://{host}:{port}"
+
+
+def _find_available_port(host: str, preferred_port: int, attempts: int = 20) -> int:
+    for offset in range(attempts):
+        candidate = preferred_port + offset
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, candidate))
+            except OSError:
+                continue
+        return candidate
+    raise OSError(f"Could not find a free port starting at {preferred_port}.")
 
 
 if __name__ == "__main__":

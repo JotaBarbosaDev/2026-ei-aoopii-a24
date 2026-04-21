@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import ssl
 from textwrap import shorten
 from html.parser import HTMLParser
 from urllib.error import URLError
@@ -8,6 +9,11 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from ..models import SourceContent
+
+try:
+    import certifi
+except ImportError:  # pragma: no cover - optional dependency at runtime
+    certifi = None
 
 
 class _TextExtractor(HTMLParser):
@@ -58,6 +64,7 @@ def extract_input(payload: str, timeout: int = 8) -> SourceContent:
         summary=summary,
         key_points=key_points,
         source_url=source_url,
+        language=_detect_language(clean_text or title),
     )
 
 
@@ -67,9 +74,20 @@ def _extract_first_url(value: str) -> str | None:
 
 
 def _fetch_url_text(url: str, timeout: int) -> str:
-    request = Request(url, headers={"User-Agent": "AgentContentPipeline/0.1"})
+    request = Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/135.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "pt-PT,pt;q=0.9,en;q=0.8",
+        },
+    )
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with urlopen(request, timeout=timeout, context=_ssl_context()) as response:
             content_type = response.headers.get("content-type", "")
             body = response.read(250_000)
     except (OSError, URLError, TimeoutError):
@@ -135,3 +153,54 @@ def _shorten(value: str, limit: int) -> str:
 
 def _normalize_whitespace(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
+
+
+def _ssl_context() -> ssl.SSLContext | None:
+    if certifi is None:
+        return None
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+def _detect_language(text: str) -> str:
+    sample = text.lower()
+    if not sample:
+        return "unknown"
+
+    portuguese_markers = [
+        " de ",
+        " para ",
+        " uma ",
+        " com ",
+        " que ",
+        " não ",
+        " missão ",
+        " rumo ",
+        " lança ",
+        " sucesso ",
+        " notícia ",
+    ]
+    english_markers = [
+        " the ",
+        " and ",
+        " for ",
+        " with ",
+        " from ",
+        " this ",
+        " that ",
+        " mission ",
+        " success ",
+        " article ",
+        " news ",
+    ]
+
+    pt_score = sum(marker in f" {sample} " for marker in portuguese_markers)
+    en_score = sum(marker in f" {sample} " for marker in english_markers)
+
+    if re.search(r"[ãõáéíóúâêôç]", sample):
+        pt_score += 2
+
+    if pt_score > en_score:
+        return "portuguese"
+    if en_score > pt_score:
+        return "english"
+    return "unknown"

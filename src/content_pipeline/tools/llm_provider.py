@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import os
 import ssl
@@ -9,7 +10,7 @@ from urllib.request import Request, urlopen
 
 from ..env import first_env, load_local_env, required_env
 from ..models import BrandingProfile, ContentBundle, EvaluationResult, SourceContent
-from .content_tools import DemoLLMProvider, evaluate_content, improve_content
+from .content_tools import DemoLLMProvider, evaluate_content, improve_content, resolve_output_language
 
 try:
     import certifi
@@ -34,6 +35,7 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
         self.name = f"openai-compatible:{model}"
 
     def generate_content(self, source: SourceContent, branding: BrandingProfile) -> ContentBundle:
+        output_language = resolve_output_language(source, branding)
         prompt = {
             "task": "Generate a branded multi-format content package.",
             "source": {
@@ -41,6 +43,7 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
                 "summary": source.summary,
                 "key_points": source.key_points,
                 "source_url": source.source_url,
+                "source_language": source.language,
             },
             "branding": {
                 "company_name": branding.company_name,
@@ -51,6 +54,7 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
                 "call_to_action": branding.call_to_action,
                 "language": branding.language,
             },
+            "output_language": output_language,
             "output_schema": {
                 "blog_post": "string",
                 "linkedin_post": "string",
@@ -58,7 +62,10 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
                 "newsletter": "string",
             },
         }
-        response = self._complete_json(_GENERATION_SYSTEM_PROMPT, prompt)
+        try:
+            response = self._complete_json(_GENERATION_SYSTEM_PROMPT, prompt)
+        except ValueError:
+            return super().generate_content(source, branding)
         try:
             return _content_bundle_from_json(response)
         except (KeyError, TypeError, ValueError):
@@ -89,7 +96,10 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
                 "recommendations": ["string"],
             },
         }
-        response = self._complete_json(_EVALUATION_SYSTEM_PROMPT, prompt)
+        try:
+            response = self._complete_json(_EVALUATION_SYSTEM_PROMPT, prompt)
+        except ValueError:
+            return evaluate_content(content, branding)
         try:
             return EvaluationResult(
                 clarity=_score(response["clarity"]),
@@ -106,7 +116,10 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
         content: ContentBundle,
         evaluation: EvaluationResult,
         branding: BrandingProfile,
+        source: SourceContent | None = None,
     ) -> ContentBundle:
+        source_language = source.language if source else "unknown"
+        output_language = resolve_output_language(source, branding) if source else branding.language
         prompt = {
             "task": "Improve the content using the evaluation.",
             "content": content.as_dict(),
@@ -120,6 +133,8 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
                 "call_to_action": branding.call_to_action,
                 "language": branding.language,
             },
+            "source_language": source_language,
+            "output_language": output_language,
             "output_schema": {
                 "blog_post": "string",
                 "linkedin_post": "string",
@@ -127,11 +142,14 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
                 "newsletter": "string",
             },
         }
-        response = self._complete_json(_IMPROVEMENT_SYSTEM_PROMPT, prompt)
+        try:
+            response = self._complete_json(_IMPROVEMENT_SYSTEM_PROMPT, prompt)
+        except ValueError:
+            return improve_content(content, evaluation, branding, source=source)
         try:
             return _content_bundle_from_json(response)
         except (KeyError, TypeError, ValueError):
-            return improve_content(content, evaluation, branding)
+            return improve_content(content, evaluation, branding, source=source)
 
     def _complete_json(self, system_prompt: str, payload: dict[str, Any]) -> dict[str, Any]:
         request_body = {
@@ -163,7 +181,9 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
         try:
             with urlopen(request, timeout=self.timeout, context=_ssl_context()) as response:
                 body = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+        except HTTPError as exc:
+            raise ValueError(f"LLM request failed: {self._format_http_error(exc)}") from exc
+        except (URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise ValueError(f"LLM request failed: {exc}") from exc
 
         try:
@@ -176,6 +196,32 @@ class OpenAICompatibleLLMProvider(DemoLLMProvider):
         if not isinstance(message, str):
             raise ValueError("LLM message content was not text.")
         return json.loads(message)
+
+    @staticmethod
+    def _format_http_error(exc: HTTPError) -> str:
+        status = exc.code
+        try:
+            raw_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            return f"HTTP Error {status}"
+
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError:
+            compact = " ".join(raw_body.split())
+            return f"HTTP Error {status}: {compact[:300]}"
+
+        if isinstance(payload, dict):
+            error = payload.get("error")
+            if isinstance(error, dict):
+                message = error.get("message") or error.get("type") or error.get("code")
+                if message:
+                    return f"HTTP Error {status}: {message}"
+            message = payload.get("message")
+            if isinstance(message, str) and message:
+                return f"HTTP Error {status}: {message}"
+
+        return f"HTTP Error {status}: {' '.join(raw_body.split())[:300]}"
 
 
 def select_llm_provider() -> DemoLLMProvider:
@@ -220,19 +266,122 @@ def select_llm_provider() -> DemoLLMProvider:
 
 
 def _content_bundle_from_json(payload: dict[str, Any]) -> ContentBundle:
-    thread = payload["twitter_thread"]
-    if not isinstance(thread, list):
-        raise TypeError("twitter_thread must be a list.")
+    thread = _normalize_thread(payload["twitter_thread"])
     return ContentBundle(
-        blog_post=str(payload["blog_post"]),
-        linkedin_post=str(payload["linkedin_post"]),
+        blog_post=_normalize_text_block(payload["blog_post"], heading=True),
+        linkedin_post=_normalize_text_block(payload["linkedin_post"]),
         twitter_thread=[str(tweet)[:280] for tweet in thread],
-        newsletter=str(payload["newsletter"]),
+        newsletter=_normalize_text_block(payload["newsletter"]),
     )
 
 
 def _score(value: Any) -> float:
     return round(max(0.0, min(float(value), 10.0)), 2)
+
+
+def _normalize_thread(value: Any) -> list[str]:
+    parsed = _coerce_structured_value(value)
+    if isinstance(parsed, dict):
+        for key in ("tweets", "thread", "items"):
+            nested = parsed.get(key)
+            if isinstance(nested, list):
+                parsed = nested
+                break
+        else:
+            parsed = _thread_items_from_dict(parsed)
+    if not isinstance(parsed, list):
+        raise TypeError("twitter_thread must be a list.")
+
+    normalized: list[str] = []
+    for item in parsed:
+        if isinstance(item, dict):
+            normalized.extend(_thread_items_from_dict(item))
+        else:
+            normalized.append(str(item).strip())
+    return [item for item in normalized if item]
+
+
+def _normalize_text_block(value: Any, heading: bool = False) -> str:
+    parsed = _coerce_structured_value(value)
+
+    if isinstance(parsed, dict):
+        parts: list[str] = []
+        title = _first_present(parsed, "title", "headline", "subject")
+        summary = _first_present(parsed, "summary", "preview", "excerpt")
+        content = _first_present(parsed, "content", "body", "text", "message", "post")
+        bullets = parsed.get("key_points") or parsed.get("takeaways")
+        call_to_action = _first_present(parsed, "call_to_action", "cta")
+
+        if title:
+            parts.append(f"# {title}" if heading else title)
+        if summary and summary != title:
+            parts.append(summary)
+        if content and content not in {title, summary}:
+            parts.append(content)
+        if isinstance(bullets, list):
+            bullet_lines = [f"- {str(item).strip()}" for item in bullets if str(item).strip()]
+            if bullet_lines:
+                parts.append("\n".join(bullet_lines))
+        if call_to_action and call_to_action not in {title, summary, content}:
+            parts.append(call_to_action)
+
+        if parts:
+            return "\n\n".join(parts)
+
+    if isinstance(parsed, list):
+        items = [str(item).strip() for item in parsed if str(item).strip()]
+        return "\n".join(items)
+
+    text = str(parsed).strip()
+    if heading and text and not text.startswith("#"):
+        return f"# {text}"
+    return text
+
+
+def _coerce_structured_value(value: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        return value
+
+    text = value.strip()
+    if not text or text[0] not in "{[":
+        return value
+
+    for parser in (json.loads, ast.literal_eval):
+        try:
+            return parser(text)
+        except (ValueError, SyntaxError, json.JSONDecodeError):
+            continue
+    return value
+
+
+def _first_present(payload: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def _thread_items_from_dict(payload: dict[str, Any]) -> list[str]:
+    tweet_keys = [key for key in payload if key.lower().startswith("tweet")]
+    if tweet_keys:
+        ordered = sorted(tweet_keys, key=_tweet_sort_key)
+        return [str(payload[key]).strip() for key in ordered if str(payload[key]).strip()]
+
+    text = _first_present(payload, "text", "content", "message", "body")
+    return [text] if text else []
+
+
+def _tweet_sort_key(value: str) -> tuple[int, str]:
+    suffix = value[5:]
+    if suffix.isdigit():
+        return (int(suffix), value)
+    return (999, value)
 
 
 def _ssl_context() -> ssl.SSLContext | None:
@@ -247,6 +396,8 @@ Return valid JSON only.
 Each output format must be different and suited to its platform.
 Respect the brand voice, audience, forbidden phrases, and call to action.
 Keep Twitter thread items under 280 characters.
+Write all output fields in the requested output_language.
+If the source is in English and output_language is Portuguese, translate naturally into Portuguese.
 """.strip()
 
 _EVALUATION_SYSTEM_PROMPT = """
@@ -263,4 +414,6 @@ Return valid JSON only.
 Use the evaluation to improve clarity, engagement, and brand alignment.
 Keep each platform format distinct.
 Respect forbidden phrases and keep Twitter thread items under 280 characters.
+Write all output fields in the requested output_language.
+If the source is in English and output_language is Portuguese, keep the final version in Portuguese.
 """.strip()

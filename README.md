@@ -1,356 +1,382 @@
-# 📦 Agent: Content Pipeline  
+# Agent: Content Pipeline
 **Project 24 – Agent Systems**  
 **João Barbosa – 32536**  
 **Pedro Sousa – 31390**
 
 ---
 
-## 📌 Descrição
+## Descrição
 
-Este projeto consiste no desenvolvimento de um **agente de Inteligência Artificial** capaz de receber um único input (notícia, artigo, vídeo, pesquisa ou áudio) e gerar automaticamente conteúdo adaptado a múltiplas plataformas, respeitando o **branding de uma empresa**.
+Este projeto implementa um **agente de pipeline de conteúdo** que recebe um único input, interpreta-o, adapta-o ao branding de uma empresa, gera vários formatos de conteúdo, avalia a qualidade, melhora o resultado se necessário e cria um documento final.
 
-O agente atua de forma autónoma, utilizando ferramentas, avaliando os seus resultados e melhorando continuamente o seu desempenho.
+O foco do projeto é demonstrar:
+
+- objetivo claro
+- uso de ferramentas
+- pipeline multi-step
+- avaliação e melhoria automática
+- comportamento persistente
+- integração com um canal real de entrada
 
 ---
 
-## 🎯 Objetivo
+## Estado Atual
 
-Criar um agente que:
+O projeto está funcional com a seguinte arquitetura:
 
-- Recebe conteúdo como input (texto, link ou media)
-- Adapta o conteúdo ao branding da empresa (baseado em Figma)
-- Gera múltiplos formatos de conteúdo:
-  - Blog post
+```text
+Telegram Bot -> Python Agent -> Groq API -> PDF -> resposta no Telegram
+```
+
+Neste momento o sistema:
+
+- recebe **texto ou link**
+- extrai e resume o conteúdo
+- traduz para **português** quando a fonte original está em inglês
+- aplica branding a partir de um ficheiro local
+- gera:
+  - blog post
   - LinkedIn post
-  - Tweet thread
-  - Newsletter section
-- Insere o conteúdo num documento (Google Docs)
-- Hospeda o documento remotamente
-- Envia ao utilizador um link para acesso
+  - Twitter/X thread
+  - newsletter
+- avalia clareza, engagement e branding
+- melhora automaticamente o conteúdo se o score for baixo
+- cria documento Markdown e PDF
+- guarda histórico simples das execuções
+- devolve o PDF ao utilizador no Telegram
+- apresenta feedback intermédio e uma resposta final formatada no Telegram
 
 ---
 
-## ⚙️ Funcionalidades do Agente
+## Mudança de Arquitetura
 
-### 🤖 Interação
-- Comunicação via:
-  - Telegram  
-  - WhatsApp (opcional)  
-  - Discord (opcional)
+### Plano Inicial
+
+O plano inicial do projeto era usar **OpenClaw** como runtime principal do agente, com integração com Telegram e ferramentas externas.
+
+### Arquitetura Atual
+
+Durante o desenvolvimento, a arquitetura foi simplificada para:
+
+- **bot Telegram em Python** como camada de entrada
+- **Groq** como provider LLM via API
+- **pipeline Python local** como motor principal de processamento
+
+### Justificação da Mudança de OpenClaw para Groq
+
+Esta mudança aconteceu por razões práticas e técnicas:
+
+1. O ambiente disponível é um **MacBook Pro 2017 Intel**, com capacidade limitada para experimentar uma stack mais pesada de runtime agentic local.
+2. O objetivo da cadeira é demonstrar **tool orchestration, multi-step reasoning e pipeline autónomo**, não obrigatoriamente usar um runtime específico.
+3. **Groq** permite usar modelos remotos no plano gratuito, evitando correr modelos localmente.
+4. A integração com Groq foi mais simples porque a API é **OpenAI-compatible**, o que encaixa diretamente no provider do projeto.
+5. Para uma demo académica, a combinação **Telegram + Python + Groq** reduz risco, setup e tempo de integração.
+
+Importante: a mudança não foi apenas “OpenClaw por Groq”.  
+Na prática, a arquitetura passou de:
+
+```text
+Telegram -> OpenClaw -> ferramentas
+```
+
+para:
+
+```text
+Telegram -> bot Python -> pipeline Python -> Groq
+```
+
+Ou seja, o Groq substitui o **LLM/provider**, e o bot Python substitui a camada de runtime/orquestração que antes estava pensada para OpenClaw.
 
 ---
 
-### 🧠 Processamento
+## Pipeline Atual
 
-- O agente é orquestrado através do **OpenClaw**
-- O OpenClaw gere:
-  - execução de tarefas  
-  - utilização de ferramentas (tool calling)  
-  - ciclo de decisão do agente  
-
-- Integração com LLMs:
-  - OpenAI GPT  
-  - OpenRouter  
+```text
+Utilizador envia texto ou link no Telegram
+        ↓
+Bot Telegram recebe a mensagem
+        ↓
+Agent pipeline processa o input
+        ↓
+Tradução para português quando necessário
+        ↓
+Geração multi-formato com Groq
+        ↓
+Avaliação de qualidade
+        ↓
+Melhoria automática se necessário
+        ↓
+Criação de Markdown e PDF
+        ↓
+Resposta no Telegram com o PDF
+```
 
 ---
 
-### 🎨 Branding
-- Adaptação de conteúdo com base em guidelines definidas no **Figma**
+## Funcionalidades Implementadas
+
+### Entrada
+
+- Texto livre
+- Link para artigo/página
+
+### Processamento
+
+- Extração e normalização de input
+- Identificação de título
+- Resumo e key points
+- Deteção simples de idioma
+- Tradução automática para português quando a fonte está em inglês
+
+### Branding
+
+- Branding local através de [`config/branding.json`](config/branding.json)
 - Ajuste de:
-  - Tom  
-  - Estrutura  
-  - Estilo de comunicação  
+  - voz
+  - audiência
+  - palavras proibidas
+  - call to action
+
+### Geração de Conteúdo
+
+- Blog post
+- LinkedIn post
+- Twitter/X thread
+- Newsletter
+
+Cada formato é gerado com diferenças estruturais e de tom. Não existe simples copy-paste entre outputs.
+
+### Avaliação e Melhoria
+
+- Scoring por:
+  - clareza
+  - engagement
+  - branding
+- auto-correction loop até ao threshold configurado
+
+### Exportação
+
+- Markdown
+- PDF
+
+### Resposta no Telegram
+
+- feedback de progresso
+- PDF enviado diretamente no chat
+- caption formatado com destaque para:
+  - tema
+  - resumo
+  - ficheiro
+  - score
+  - melhorias
+  - link, quando disponível
+
+### Memória
+
+- histórico simples em JSONL
+- loop persistente local
+
+### Integração Externa
+
+- Groq via API
+- Bot Telegram funcional
 
 ---
 
-### 📝 Geração de Conteúdo
+## O Que Ainda Falta
 
-A partir de um único input, o agente gera:
+Para o projeto ficar mais próximo da versão completa descrita no enunciado, ainda faltam estas partes:
 
-- Blog post (long-form)  
-- LinkedIn post (profissional)  
-- Tweet thread (mais informal)  
-- Secção de newsletter  
+1. **Figma**
+   - neste momento não há integração direta com Figma
+   - o branding está fixo em JSON local
 
-⚠️ Cada formato é adaptado — não existe simples reescrita.
+2. **Google Docs / Google Drive**
+   - o documento final é PDF local
+   - ainda não há criação de Google Doc nem upload para Drive
 
----
+3. **Link público real**
+   - o projeto pode devolver `file://` ou HTTP local
+   - `telegram-stack` já consegue servir localmente os PDFs e escolher uma porta livre
+   - ainda não há hosting público real
 
-### 📄 Exportação
-- Criação automática de documentos:
-  - Google Docs  
-  - PDF (opcional)
+4. **Inputs multimédia**
+   - áudio, vídeo e ficheiros ainda não são processados
+   - o bot responde que esses formatos ainda não estão ligados
 
----
-
-### ☁️ Hosting
-- Upload do documento para servidor remoto ou Google Drive  
-- Geração de link público  
-
----
-
-### 🔁 Envio ao Utilizador
-- O agente devolve o link através da plataforma de origem  
+5. **README antigo / docs antigas**
+   - `docs/OPENCLAW.md` ficou como nota histórica de uma abordagem inicialmente considerada
+   - a arquitetura principal atual é Telegram + Groq + pipeline Python
 
 ---
 
-## 🧠 Características de Agente
-
-O sistema cumpre os princípios de um agente autónomo:
-
-- Atua com um objetivo definido  
-- Utiliza ferramentas externas  
-- Executa tarefas de forma autónoma  
-- Mantém um ciclo de execução contínuo (loop persistente)  
-- Mede a qualidade dos resultados  
-- Melhora outputs através de auto-avaliação  
-- Aprende com execuções anteriores (histórico)  
-
-Estas capacidades são suportadas pelo OpenClaw, que permite a execução de agentes com comportamento autónomo e iterativo.
-
----
-
-## 🔄 Pipeline do Sistema
-
-- Input (Telegram / WhatsApp / Discord)  
-  ↓  
-- Processamento (OpenClaw + LLM)  
-  ↓  
-- Adaptação ao Branding (Figma-based)  
-  ↓  
-- Geração Multi-Formato  
-  ↓  
-- Criação de Documento (Google Docs)  
-  ↓  
-- Upload / Partilha (Google Drive)  
-  ↓  
-- Envio de link ao utilizador  
-
----
-
-## 🏗️ Arquitetura
-
-- SSH → VM  
-  ↓  
-- OpenClaw Agent Runtime  
-  ↓  
-- Tools:
-  - LLM (OpenAI / OpenRouter)  
-  - Google Docs / Drive API  
-  - File Upload  
-  ↓  
-- Outputs:
-  - Telegram  
-  - WhatsApp  
-  - Discord  
-
----
-
-## 🧪 Tecnologias
-
-- Python (backend)  
-- OpenClaw  
-- LLM APIs (OpenAI, OpenRouter)  
-- Telegram Bot API  
-- Google Docs API / Google Drive API  
-- VM para hosting remoto  
-
----
-
-## ⚡ Framework de Agente
-
-### OpenClaw
-
-O OpenClaw é utilizado como framework principal para implementação do agente.
-
-Responsabilidades:
-- Orquestração do fluxo do agente  
-- Gestão de ferramentas  
-- Execução de tarefas iterativas  
-- Suporte a loops persistentes  
-
-Comandos principais:
-- `openclaw onboard`  
-- `openclaw tui`  
-
----
-
-### Alternativa (não utilizada)
-
-AI Agentic Harnesses:
-- Hermes  
-- Codex  
-- Claude Code  
-- Gemini  
-
----
-
-## 📊 Requisitos do Projeto
-
-- Pelo menos **3 formatos de output**  
-- Adaptação específica por plataforma  
-- Uso de LLM  
-- Demonstração de comportamento de agente  
-- Sem rephrasing genérico  
-
----
-
-## 🚀 Execução (exemplo)
-
-1. Enviar conteúdo para o bot (Telegram)  
-2. O agente processa o input  
-3. Gera conteúdos multi-plataforma  
-4. Cria documento (Google Docs)  
-5. Partilha documento (link público)  
-6. Devolve link ao utilizador  
-
----
-
-## 📁 Estrutura do Repositório
+## Estrutura do Repositório
 
 ```text
 .
-├── config/branding.json          # Guidelines de branding usadas pelo agente
+├── config/branding.json          # Branding local usado pelo pipeline
 ├── data/generated/               # Markdown/PDF gerados localmente
-├── data/memory/                  # Historico JSONL das execucoes
-├── data/public/                  # Pasta simulada de upload publico
-├── docs/OPENCLAW.md              # Como ligar o pipeline ao OpenClaw
-├── examples/sample_input.txt     # Input de demonstracao
-├── src/content_pipeline/         # Codigo do agente, ferramentas e CLI
-└── tests/                        # Testes do pipeline
+├── data/memory/                  # Histórico JSONL das execuções
+├── data/public/                  # Pasta simulada de upload público
+├── docs/OPENCLAW.md              # Notas históricas da abordagem com OpenClaw
+├── examples/sample_input.txt     # Input de demonstração
+├── src/content_pipeline/         # Código principal
+│   ├── agent.py                  # Orquestra o pipeline
+│   ├── env.py                    # Leitura de .env / .env.local
+│   ├── telegram_bot.py           # Integração com Telegram
+│   └── tools/                    # Ferramentas do pipeline
+└── tests/                        # Testes automatizados
 ```
 
 ---
 
-## ▶️ Como Executar
+## Configuração
 
-Criar ambiente virtual e instalar o pacote:
+O projeto lê automaticamente `.env` e `.env.local`.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-Executar uma demonstracao com o input de exemplo:
+Exemplo mínimo:
 
 ```bash
-content-pipeline run --file examples/sample_input.txt
+LLM_PROVIDER=groq
+GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=llama-3.1-8b-instant
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 ```
 
-Tambem e possivel executar sem instalar, usando `PYTHONPATH`:
+Variáveis opcionais:
+
+```bash
+PUBLIC_BASE_URL=http://127.0.0.1:8000
+```
+
+Isto permite gerar links HTTP quando estiveres a servir a pasta `data/public`.
+
+---
+
+## Como Executar
+
+### Nota sobre este repositório
+
+Neste Mac, o caminho do projeto contém o carácter `º`, e em algumas instalações isso faz o `pip install -e .` falhar em modo editable.  
+Por esse motivo, a forma mais estável de correr o projeto aqui é:
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline ...
+```
+
+### Executar uma demo local
 
 ```bash
 PYTHONPATH=src python3 -m content_pipeline run --file examples/sample_input.txt
 ```
 
-O resultado inclui:
-
-- ID da execucao
-- titulo identificado
-- score de qualidade
-- numero de ciclos de melhoria
-- link para o PDF gerado
-
----
-
-## 🔁 Loop Persistente
-
-Para demonstrar comportamento continuo de agente:
+Ou com texto direto:
 
 ```bash
-content-pipeline loop
+PYTHONPATH=src python3 -m content_pipeline run --input "cola aqui o artigo ou link"
 ```
 
-Cada linha enviada no terminal e tratada como um novo input do utilizador. O agente executa o pipeline completo, gera documento, faz upload local e regista a execucao em memoria.
-
----
-
-## 🤖 Bot Telegram
-
-Depois de adicionares `TELEGRAM_BOT_TOKEN` ao `.env`, arranca o bot com:
+JSON completo:
 
 ```bash
-content-pipeline telegram-bot
+PYTHONPATH=src python3 -m content_pipeline run --file examples/sample_input.txt --json
 ```
 
-Sem instalacao editable:
+### Loop persistente local
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline loop
+```
+
+### Histórico
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline history --limit 5
+```
+
+### Servir PDFs localmente por HTTP
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline serve --directory data/public --port 8000
+```
+
+### Arrancar o bot Telegram
 
 ```bash
 PYTHONPATH=src python3 -m content_pipeline telegram-bot
 ```
 
-O bot aceita texto e links enviados em mensagem, executa o pipeline com Groq e devolve o PDF diretamente no Telegram.
+### Arrancar a stack completa
+
+Este é o comando mais útil para demo, porque arranca:
+
+- servidor HTTP local para os PDFs
+- bot Telegram
+- configuração automática de `PUBLIC_BASE_URL`
+
+```bash
+PYTHONPATH=src python3 -m content_pipeline telegram-stack
+```
+
+Se a porta `8000` já estiver ocupada, o projeto tenta usar a seguinte porta livre.
 
 ---
 
-## 🌐 Links Publicos em Demo
+## Bot Telegram
 
-Por defeito, o upload devolve um link `file://` para a pasta `data/public`.
+O bot Telegram já está integrado no projeto.
 
-Para simular hosting HTTP local:
+Comportamento atual:
 
-```bash
-content-pipeline serve --directory data/public --port 8000
-```
+- aceita texto e links enviados em mensagem
+- chama o pipeline internamente
+- traduz conteúdo para português quando necessário
+- gera o PDF
+- devolve o PDF diretamente no chat
+- mostra feedback de progresso durante o processamento
+- mostra score e número de melhorias no caption
+- destaca os campos fixos no caption para facilitar leitura
+- inclui link apenas se existir URL HTTP/HTTPS pública
 
-Noutra janela:
+Limitações atuais:
 
-```bash
-PUBLIC_BASE_URL=http://127.0.0.1:8000 content-pipeline run --file examples/sample_input.txt
-```
-
-Num deployment real, este passo pode ser substituido por Google Drive, Google Docs API, S3, servidor da VM ou outro servico de hosting.
+- ainda não processa áudio
+- ainda não processa vídeo
+- ainda não processa documentos anexos como input
 
 ---
 
-## 🧩 Ferramentas Implementadas
+## Ferramentas Implementadas
 
-| Ferramenta | Implementacao |
+| Ferramenta | Implementação atual |
 | --- | --- |
-| `generate_content(input)` | Gera blog post, LinkedIn post, Twitter thread e newsletter |
+| `generate_content(input)` | Gera blog post, LinkedIn post, Twitter/X thread e newsletter |
 | `evaluate_content(content)` | Calcula score de clareza, engagement e branding |
 | `improve_content(content)` | Corrige outputs abaixo do threshold |
 | `create_document(content)` | Cria Markdown e PDF |
-| `upload_document(file)` | Copia o PDF para pasta publica e devolve URL |
-
-O provider por defeito e `demo`, para a apresentacao funcionar sem chaves de API. Para usar um endpoint real compativel com OpenAI Chat Completions:
-
-```bash
-LLM_PROVIDER=openai OPENAI_API_KEY=... OPENAI_MODEL=... content-pipeline run --file examples/sample_input.txt
-LLM_PROVIDER=openrouter OPENROUTER_API_KEY=... OPENROUTER_MODEL=... content-pipeline run --file examples/sample_input.txt
-```
-
-Para usar Groq diretamente:
-
-```bash
-LLM_PROVIDER=groq GROQ_API_KEY=... GROQ_MODEL=llama-3.1-8b-instant content-pipeline run --file examples/sample_input.txt
-```
-
-Para o bot Telegram, adiciona tambem:
-
-```bash
-TELEGRAM_BOT_TOKEN=...
-```
-
-Tambem existe o modo generico:
-
-```bash
-LLM_PROVIDER=compatible LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=... content-pipeline run --file examples/sample_input.txt
-```
-
-O projeto tambem carrega automaticamente um ficheiro `.env` ou `.env.local` na raiz do repositorio, por exemplo:
-
-```bash
-LLM_PROVIDER=groq
-GROQ_API_KEY=...
-GROQ_MODEL=llama-3.1-8b-instant
-TELEGRAM_BOT_TOKEN=...
-```
+| `upload_document(file)` | Copia o PDF para pasta pública e devolve URL |
 
 ---
 
-## 🧪 Testes
+## Tecnologias
+
+- Python
+- Groq API
+- Telegram Bot API
+- deep-translator
+- reportlab
+- JSONL para memória simples
+- PDF gerado localmente
+
+Tecnologias planeadas mas ainda não integradas:
+
+- Figma
+- Google Docs API
+- Google Drive API
+
+---
+
+## Testes
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests
@@ -358,26 +384,87 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 ---
 
-## 📎 Integração OpenClaw
+## Histórico e Decisões
 
-Ver instrucoes em [`docs/OPENCLAW.md`](docs/OPENCLAW.md).
+### 1. Ideia inicial
 
-Resumo:
+- arquitetura pensada com OpenClaw
+- VM / runtime sempre ligado
+- Telegram como canal principal
 
-1. Configurar OpenClaw com `openclaw onboard`
-2. Ligar Telegram no runtime
-3. Instruir o agente a executar:
+**Motivo:** seguir uma abordagem clássica de agente com runtime dedicado.
 
-```bash
-PYTHONPATH=src python3 -m content_pipeline run --input "<mensagem do utilizador>" --json
-```
+### 2. Implementação do núcleo do pipeline
 
-4. Devolver ao utilizador o link final, score e numero de melhorias
+- criação do agente em Python
+- geração multi-formato
+- avaliação de qualidade
+- melhoria iterativa
+- exportação para PDF
+- memória em JSONL
+
+**Motivo:** garantir primeiro a parte central do projeto antes das integrações externas.
+
+### 3. Mudança de OpenClaw para Telegram bot + Groq
+
+- abandono da dependência de OpenClaw como runtime principal
+- integração direta com Groq
+- criação de bot Telegram simples
+
+**Motivo:** reduzir complexidade, adequar ao hardware disponível e manter o projeto demonstrável no contexto académico.
+
+### 4. Integração real com Groq
+
+- suporte explícito a `LLM_PROVIDER=groq`
+- leitura automática de `.env`
+- correção de SSL e compatibilidade de requests
+
+**Motivo:** usar um LLM remoto gratuito e estável sem correr modelos localmente.
+
+### 5. Integração do bot Telegram
+
+- criação do módulo `telegram_bot.py`
+- comando CLI `telegram-bot`
+- comando CLI `telegram-stack`
+- envio do PDF diretamente no chat
+
+**Motivo:** cumprir o requisito de interação por mensagem e permitir uma demo end-to-end.
+
+### 6. Tradução automática e normalização de idioma
+
+- deteção simples de idioma na fonte
+- tradução da fonte em inglês para português
+- normalização do conteúdo final quando o modelo devolve partes em inglês
+
+**Motivo:** manter o documento final coerente para demonstração em português, independentemente do idioma original da notícia.
+
+### 7. Melhoria da experiência no Telegram
+
+- mensagens de progresso
+- caption final com destaque visual
+- arranque simplificado com `telegram-stack`
+- escolha automática de porta livre para o servidor local
+
+**Motivo:** tornar a demo mais estável e mais legível durante a apresentação.
 
 ---
 
-## 🧾 Resumo
+## Resumo
 
-O projeto implementa um agente de IA capaz de transformar um único input em múltiplos conteúdos adaptados a diferentes plataformas, respeitando o branding de uma empresa, com geração automática de documentos e distribuição remota.
+O projeto já demonstra um agente funcional com:
 
-O agente apresenta comportamento autónomo, com capacidade de avaliação, melhoria contínua e execução persistente, suportado pelo framework OpenClaw.
+- objetivo definido
+- uso de ferramentas
+- pipeline multi-step
+- avaliação e melhoria automática
+- memória simples
+- integração com Telegram
+- uso de LLM real via Groq
+- tradução automática para português
+- geração e entrega de PDF com feedback no Telegram
+
+O que falta para a versão mais completa é sobretudo:
+
+- branding ligado ao Figma
+- publicação real do documento em Google Docs / Drive ou outro hosting público
+- suporte multimédia além de texto e links

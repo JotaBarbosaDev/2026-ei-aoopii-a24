@@ -36,6 +36,7 @@ class SourceContent:
     summary: str
     key_points: list[str]
     source_url: str | None = None
+    language: str = "unknown"
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,7 @@ class DocumentArtifact:
     path: Path
     markdown_path: Path | None = None
     format: str = "pdf"
+    download_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -112,11 +114,13 @@ class PipelineResult:
                 "summary": self.source.summary,
                 "key_points": self.source.key_points,
                 "source_url": self.source.source_url,
+                "language": self.source.language,
             },
             "content": self.content.as_dict(),
             "evaluation": self.evaluation.as_dict(),
             "document_path": str(self.document.path),
             "markdown_path": str(self.document.markdown_path) if self.document.markdown_path else None,
+            "document_name": self.document.download_name,
             "url": self.upload.url,
             "iterations": self.iterations,
         }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import uuid
 from datetime import datetime, timezone
+from typing import Callable
 
 from .config import AgentConfig
 from .memory import ExecutionMemory
@@ -10,10 +11,10 @@ from .models import PipelineResult
 from .tools import (
     DemoLLMProvider,
     create_document,
-    evaluate_content,
     extract_input,
-    generate_content,
-    improve_content,
+    normalize_bundle_for_portuguese,
+    translate_bundle_to_portuguese,
+    translate_source_to_portuguese,
     upload_document,
 )
 
@@ -31,28 +32,65 @@ class ContentPipelineAgent:
         self.llm = llm or DemoLLMProvider()
         self.memory = memory or ExecutionMemory(config.memory_path)
 
-    def run(self, payload: str) -> PipelineResult:
+    def run(
+        self,
+        payload: str,
+        status_callback: Callable[[str], None] | None = None,
+    ) -> PipelineResult:
         run_id = self._new_run_id()
 
+        self._notify(status_callback, "A analisar o input recebido.")
         source = extract_input(payload)
-        content = generate_content(source, self.config.branding, self.llm)
-        evaluation = evaluate_content(content, self.config.branding)
+
+        source_label = "link" if source.source_type == "link" else "texto"
+        self._notify(status_callback, f"Input identificado como {source_label}.")
+        if source.language == "english":
+            self._notify(
+                status_callback,
+                "Fonte em ingles detetada. Vou preparar a versao final em portugues.",
+            )
+            source = translate_source_to_portuguese(source)
+
+        self._notify(status_callback, "A gerar as varias versoes de conteudo.")
+        content = self.llm.generate_content(source, self.config.branding)
+        if source.language in {"english", "portuguese"}:
+            content = translate_bundle_to_portuguese(content)
+            content = normalize_bundle_for_portuguese(content, self.config.branding)
+
+        self._notify(status_callback, "A avaliar qualidade e alinhamento com o branding.")
+        evaluation = self.llm.evaluate_content(content, self.config.branding)
 
         iterations = 0
         while (
             not evaluation.passed(self.config.quality_threshold)
             and iterations < self.config.max_improvement_rounds
         ):
-            content = improve_content(content, evaluation, self.config.branding)
-            evaluation = evaluate_content(content, self.config.branding)
+            self._notify(status_callback, "A melhorar o conteudo com base na avaliacao.")
+            content = self.llm.improve_content(
+                content,
+                evaluation,
+                self.config.branding,
+                source=source,
+            )
+            if source.language in {"english", "portuguese"}:
+                content = translate_bundle_to_portuguese(content)
+                content = normalize_bundle_for_portuguese(content, self.config.branding)
+            self._notify(status_callback, "A reavaliar depois das melhorias.")
+            evaluation = self.llm.evaluate_content(content, self.config.branding)
             iterations += 1
 
+        self._notify(status_callback, "A criar o documento final.")
         document = create_document(
             content=content,
             evaluation=evaluation,
             output_dir=self.config.generated_dir,
             run_id=run_id,
+            title_hint=source.title,
+            summary_hint=source.summary,
+            prefer_title_hint=True,
         )
+
+        self._notify(status_callback, "A preparar o ficheiro para entrega.")
         upload = upload_document(
             document.path,
             public_dir=self.config.public_dir,
@@ -69,6 +107,7 @@ class ContentPipelineAgent:
             iterations=iterations,
         )
         self._remember(result)
+        self._notify(status_callback, "Concluido. Vou enviar o PDF.")
         return result
 
     def run_forever(self) -> None:
@@ -102,6 +141,14 @@ class ContentPipelineAgent:
                 "public_url": result.upload.url,
             }
         )
+
+    @staticmethod
+    def _notify(
+        callback: Callable[[str], None] | None,
+        message: str,
+    ) -> None:
+        if callback:
+            callback(message)
 
     @staticmethod
     def _new_run_id() -> str:
