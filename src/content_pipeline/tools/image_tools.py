@@ -11,7 +11,7 @@ from textwrap import shorten
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from ..env import load_local_env
+from ..environment import PROJECT_ROOT, load_local_env
 from ..models import BrandingProfile, ContentBundle, ImageAsset, SourceContent
 from .document_tools import upload_document
 
@@ -19,6 +19,15 @@ try:
     import certifi
 except ImportError:  # pragma: no cover - optional runtime dependency
     certifi = None
+
+try:
+    from PIL import Image, ImageDraw
+
+    PIL_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional runtime dependency
+    Image = None
+    ImageDraw = None
+    PIL_AVAILABLE = False
 
 
 @dataclass(frozen=True)
@@ -36,6 +45,13 @@ IMAGE_SPECS: tuple[ImageSpec, ...] = (
     ImageSpec("twitter", "X/Twitter", 1600, 896, "bold horizontal social image for an X post"),
     ImageSpec("newsletter", "Newsletter", 1200, 632, "clean header visual for an email newsletter"),
 )
+
+PROJECT_LOGO_PATH = PROJECT_ROOT / "logo.jpg"
+LOGO_MAX_WIDTH_RATIO = 0.22
+LOGO_MAX_HEIGHT_RATIO = 0.20
+LOGO_MARGIN_RATIO = 0.03
+LOGO_PANEL_OPACITY = 208
+LOGO_WHITE_THRESHOLD = 248
 
 
 def generate_social_images(
@@ -63,6 +79,7 @@ def generate_social_images(
         file_name = _build_image_filename(source.title, spec.platform, run_id, extension)
         image_path = generated_dir / file_name
         image_path.write_bytes(image_bytes)
+        _apply_project_logo(image_path)
 
         image_base_url = (
             f"{public_base_url.rstrip('/')}/images" if public_base_url else None
@@ -225,3 +242,92 @@ def _ssl_context() -> ssl.SSLContext | None:
     if certifi is None:
         return None
     return ssl.create_default_context(cafile=certifi.where())
+
+
+def _apply_project_logo(image_path: Path) -> None:
+    if not PIL_AVAILABLE or not PROJECT_LOGO_PATH.exists():
+        return
+
+    try:
+        with Image.open(image_path) as source_image:
+            output_format = source_image.format or _pil_format_from_suffix(image_path.suffix)
+            canvas = source_image.convert("RGBA")
+
+        with Image.open(PROJECT_LOGO_PATH) as raw_logo:
+            logo = _prepare_logo(raw_logo, canvas.size)
+    except OSError:
+        return
+
+    if logo is None:
+        return
+
+    margin = max(12, int(min(canvas.size) * LOGO_MARGIN_RATIO))
+    padding = max(10, margin // 2)
+    x = max(margin, canvas.width - logo.width - margin)
+    y = max(margin, canvas.height - logo.height - margin)
+
+    overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    draw.rounded_rectangle(
+        (
+            x - padding,
+            y - padding,
+            x + logo.width + padding,
+            y + logo.height + padding,
+        ),
+        radius=max(12, padding),
+        fill=(255, 255, 255, LOGO_PANEL_OPACITY),
+    )
+    overlay.paste(logo, (x, y), logo)
+
+    composited = Image.alpha_composite(canvas, overlay)
+    _save_composited_image(composited, image_path, output_format)
+
+
+def _prepare_logo(logo_image: Image.Image, canvas_size: tuple[int, int]) -> Image.Image | None:
+    prepared = _remove_white_background(logo_image)
+    if prepared is None:
+        return None
+
+    max_width = max(1, int(canvas_size[0] * LOGO_MAX_WIDTH_RATIO))
+    max_height = max(1, int(canvas_size[1] * LOGO_MAX_HEIGHT_RATIO))
+    prepared.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+    return prepared
+
+
+def _remove_white_background(logo_image: Image.Image) -> Image.Image | None:
+    rgba = logo_image.convert("RGBA")
+    cleaned_pixels = []
+    for red, green, blue, alpha in rgba.getdata():
+        if red >= LOGO_WHITE_THRESHOLD and green >= LOGO_WHITE_THRESHOLD and blue >= LOGO_WHITE_THRESHOLD:
+            cleaned_pixels.append((255, 255, 255, 0))
+        else:
+            cleaned_pixels.append((red, green, blue, alpha))
+    rgba.putdata(cleaned_pixels)
+
+    bbox = rgba.getbbox()
+    if bbox is None:
+        return None
+    return rgba.crop(bbox)
+
+
+def _save_composited_image(image: Image.Image, image_path: Path, output_format: str) -> None:
+    normalized_format = output_format.upper()
+    if normalized_format in {"JPG", "JPEG"}:
+        flattened = Image.new("RGB", image.size, "white")
+        flattened.paste(image, mask=image.getchannel("A"))
+        flattened.save(image_path, format="JPEG", quality=95, subsampling=0)
+        return
+    if normalized_format == "WEBP":
+        image.save(image_path, format="WEBP", quality=95)
+        return
+    image.save(image_path, format="PNG")
+
+
+def _pil_format_from_suffix(suffix: str) -> str:
+    normalized_suffix = suffix.lower().lstrip(".")
+    if normalized_suffix in {"jpg", "jpeg"}:
+        return "JPEG"
+    if normalized_suffix == "webp":
+        return "WEBP"
+    return "PNG"

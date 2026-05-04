@@ -222,7 +222,7 @@ Para o projeto ficar mais próximo da versão completa descrita no enunciado, ai
 ├── examples/sample_input.txt     # Input de demonstração
 ├── src/content_pipeline/         # Código principal
 │   ├── agent.py                  # Orquestra o pipeline
-│   ├── env.py                    # Leitura de .env / .env.local
+│   ├── environment.py            # Leitura de .env / .env.local
 │   ├── telegram_bot.py           # Integração com Telegram
 │   └── tools/                    # Ferramentas do pipeline
 └── tests/                        # Testes automatizados

@@ -2,10 +2,14 @@
 .env
 .env.local
 __pycache__/
+__pycache__*/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .DS_Store
+* 2.py
+* 2.md
+* 2.example
 
 # Demo runtime outputs
 data/generated/*

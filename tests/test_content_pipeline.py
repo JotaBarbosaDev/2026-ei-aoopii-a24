@@ -3,8 +3,11 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
+
+from PIL import Image, ImageChops, ImageDraw
 
 from content_pipeline.__main__ import _build_public_base_url, _find_available_port
 from content_pipeline.agent import ContentPipelineAgent
@@ -142,6 +145,51 @@ class ContentPipelineTests(unittest.TestCase):
             )
 
         self.assertEqual(artifact.download_name, "missao-artemis-ii-rumo-a-lua.pdf")
+
+    def test_generated_images_include_project_logo_overlay(self) -> None:
+        source = extract_input(SAMPLE_INPUT)
+        content = generate_content(source, _branding())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logo_path = root / "logo.jpg"
+            generated_dir = root / "generated"
+            public_dir = root / "public"
+
+            logo = Image.new("RGB", (420, 120), "white")
+            draw = ImageDraw.Draw(logo)
+            draw.rectangle((30, 25, 170, 95), fill="black")
+            draw.rectangle((210, 25, 390, 95), fill="#F5A300")
+            logo.save(logo_path, format="JPEG")
+
+            base_image = Image.new("RGB", (1200, 632), (20, 60, 180))
+            payload = BytesIO()
+            base_image.save(payload, format="PNG")
+
+            with patch("content_pipeline.tools.image_tools._cloudflare_configured", return_value=True):
+                with patch(
+                    "content_pipeline.tools.image_tools._run_cloudflare_image_generation",
+                    return_value=(payload.getvalue(), "png"),
+                ):
+                    with patch("content_pipeline.tools.image_tools.PROJECT_LOGO_PATH", logo_path):
+                        assets = generate_social_images(
+                            source,
+                            content,
+                            _branding(),
+                            "test-run-123",
+                            generated_dir,
+                            public_dir,
+                        )
+
+            self.assertEqual(len(assets), 4)
+            self.assertTrue(all(asset.path.exists() for asset in assets))
+            self.assertTrue(all((public_dir / asset.path.name).exists() for asset in assets))
+
+            with Image.open(assets[0].path) as rendered:
+                comparison = Image.new("RGB", rendered.size, (20, 60, 180))
+                diff = ImageChops.difference(rendered.convert("RGB"), comparison)
+
+            self.assertIsNotNone(diff.getbbox())
 
     def test_agent_runs_full_pipeline_and_logs_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

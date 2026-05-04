@@ -8,7 +8,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from ..env import first_env, load_local_env, required_env
+from ..environment import first_env, load_local_env, required_env
 from ..models import BrandingProfile, ContentBundle, EvaluationResult, SourceContent
 from .content_tools import DemoLLMProvider, evaluate_content, improve_content, resolve_output_language
 
