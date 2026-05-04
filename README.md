@@ -188,8 +188,9 @@ Cada formato é gerado com diferenças estruturais e de tom. Não existe simples
 Para o projeto ficar mais próximo da versão completa descrita no enunciado, ainda faltam estas partes:
 
 1. **Figma**
-   - neste momento não há integração direta com Figma
-   - o branding está fixo em JSON local
+   - ja existe aplicacao de overlays exportadas do Figma por tamanho
+   - o runtime pode usar API do Figma ou PNGs locais em `assets/figma_frames/`
+   - o branding textual principal continua fixo em JSON local
 
 2. **Google Docs / Google Drive**
    - o documento final é PDF local
@@ -507,6 +508,7 @@ Limitações atuais:
 - Groq API
 - Telegram Bot API
 - Cloudflare Workers AI
+- Figma overlays locais por PNG
 - deep-translator
 - reportlab
 - JSONL para memória simples
@@ -514,9 +516,29 @@ Limitações atuais:
 
 Tecnologias planeadas mas ainda não integradas:
 
-- Figma
 - Google Docs API
 - Google Drive API
+
+## Figma Frames
+
+Para evitar dependencia da API do Figma em runtime, o bot pode aplicar overlays PNG locais exportadas do Figma.
+
+Coloca estes ficheiros em `assets/figma_frames/`:
+
+- `frame_1600x896.png`
+- `frame_1200x632.png`
+
+Ou configura caminhos explicitos na `.env`:
+
+- `FIGMA_FRAME_PATH_1600x896=assets/figma_frames/frame_1600x896.png`
+- `FIGMA_FRAME_PATH_1200x632=assets/figma_frames/frame_1200x632.png`
+
+Mapeamento usado pelo pipeline:
+
+- `blog` e `twitter`: `1600x896`
+- `linkedin` e `newsletter`: `1200x632`
+
+As overlays devem ter fundo transparente e conter apenas a moldura, logo e elementos de branding que ficam por cima da imagem gerada.
 
 ---
 
