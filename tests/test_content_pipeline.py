@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
+
+from PIL import Image, ImageChops, ImageDraw
 
 from content_pipeline.__main__ import _build_public_base_url, _find_available_port
 from content_pipeline.agent import ContentPipelineAgent
@@ -32,6 +36,7 @@ from content_pipeline.tools.llm_provider import (
     _content_bundle_from_json,
     select_llm_provider,
 )
+from content_pipeline.tools.image_tools import _download_figma_frame, _resolve_local_figma_frame
 from content_pipeline.tools.translation_tools import translate_source_to_portuguese
 
 
@@ -142,6 +147,112 @@ class ContentPipelineTests(unittest.TestCase):
             )
 
         self.assertEqual(artifact.download_name, "missao-artemis-ii-rumo-a-lua.pdf")
+
+    def test_generated_images_include_local_figma_frame_overlay(self) -> None:
+        source = extract_input(SAMPLE_INPUT)
+        content = generate_content(source, _branding())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frame_dir = root / "figma_frames"
+            generated_dir = root / "generated"
+            public_dir = root / "public"
+            frame_dir.mkdir(parents=True, exist_ok=True)
+
+            blog_frame = Image.new("RGBA", (1600, 896), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(blog_frame)
+            draw.rectangle((0, 0, 1599, 110), fill=(255, 255, 255, 210))
+            draw.rectangle((0, 0, 1599, 18), fill=(245, 163, 0, 255))
+            blog_frame.save(frame_dir / "Frame1600x896.png", format="PNG")
+
+            linkedin_frame = Image.new("RGBA", (1200, 632), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(linkedin_frame)
+            draw.rectangle((0, 0, 1199, 84), fill=(255, 255, 255, 210))
+            draw.rectangle((0, 0, 1199, 16), fill=(245, 163, 0, 255))
+            linkedin_frame.save(frame_dir / "Frame1200x632.png", format="PNG")
+
+            def fake_generation(spec, prompt, run_id):
+                image = Image.new("RGB", (spec.width, spec.height), (20, 60, 180))
+                payload = BytesIO()
+                image.save(payload, format="PNG")
+                return payload.getvalue(), "png"
+
+            with patch("content_pipeline.tools.image_tools._cloudflare_configured", return_value=True):
+                with patch(
+                    "content_pipeline.tools.image_tools._run_cloudflare_image_generation",
+                    side_effect=fake_generation,
+                ):
+                    with patch.dict(
+                        os.environ,
+                        {
+                            "FIGMA_FRAME_PATH_1600x896": str(frame_dir / "Frame1600x896.png"),
+                            "FIGMA_FRAME_PATH_1200x632": str(frame_dir / "Frame1200x632.png"),
+                        },
+                        clear=False,
+                    ):
+                        assets = generate_social_images(
+                            source,
+                            content,
+                            _branding(),
+                            "test-run-123",
+                            generated_dir,
+                            public_dir,
+                        )
+
+            self.assertEqual(len(assets), 4)
+            self.assertTrue(all(asset.path.exists() for asset in assets))
+            self.assertTrue(all((public_dir / asset.path.name).exists() for asset in assets))
+
+            with Image.open(assets[0].path) as rendered:
+                comparison = Image.new("RGB", rendered.size, (20, 60, 180))
+                diff = ImageChops.difference(rendered.convert("RGB"), comparison)
+
+            self.assertIsNotNone(diff.getbbox())
+
+    def test_download_figma_frame_normalizes_hyphenated_node_id(self) -> None:
+        class FakeJsonResponse:
+            def __enter__(self) -> "FakeJsonResponse":
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return json.dumps({"images": {"1:2": "https://example.com/frame.png"}}).encode("utf-8")
+
+        class FakeImageResponse:
+            def __enter__(self) -> "FakeImageResponse":
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return b"fake-png"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_file = Path(tmp) / "frame_1600x896.png"
+
+            with patch(
+                "content_pipeline.tools.image_tools.urlopen",
+                side_effect=[FakeJsonResponse(), FakeImageResponse()],
+            ):
+                result = _download_figma_frame("token", "file-key", "1-2", cache_file)
+                self.assertEqual(result, cache_file)
+                self.assertEqual(cache_file.read_bytes(), b"fake-png")
+
+    def test_resolve_local_figma_frame_accepts_common_filename_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frame_dir = root / "assets" / "figma_frames"
+            frame_dir.mkdir(parents=True, exist_ok=True)
+            frame_path = frame_dir / "Frame1600x896.png"
+            frame_path.write_bytes(b"png")
+
+            with patch("content_pipeline.tools.image_tools.FIGMA_LOCAL_FRAMES_DIR", frame_dir):
+                resolved = _resolve_local_figma_frame("1600x896")
+
+        self.assertEqual(resolved, frame_path)
 
     def test_agent_runs_full_pipeline_and_logs_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

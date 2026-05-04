@@ -15,6 +15,7 @@ authors = [
 dependencies = [
   "certifi>=2024.2.2",
   "deep-translator>=1.11.4",
+  "Pillow>=11.0.0",
   "reportlab>=4.0.0",
   "python-telegram-bot>=22,<23"
 ]

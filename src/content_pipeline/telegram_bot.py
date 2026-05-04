@@ -8,7 +8,7 @@ from typing import Callable
 
 from .agent import ContentPipelineAgent
 from .config import load_config
-from .env import load_local_env, required_env
+from .environment import load_local_env, required_env
 from .models import ImageAsset, PipelineResult
 from .tools import select_llm_provider
 
@@ -151,7 +151,7 @@ def build_result_caption(result: PipelineResult) -> str:
 
 def build_welcome_message() -> str:
     return (
-        "🤖 Ola. Sou o Agent: Content Pipeline.\n\n"
+        "🤖 Ola. Sou o Agent: Arpost.\n\n"
         "Posso receber um texto ou link, gerar conteudo em varios formatos, "
         "avaliar a qualidade, melhorar o resultado e devolver um PDF final.\n\n"
         "📌 Comandos disponiveis:\n"
