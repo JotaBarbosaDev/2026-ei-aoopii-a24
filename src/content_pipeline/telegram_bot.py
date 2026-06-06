@@ -91,7 +91,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(f"Erro a processar o pedido: {exc}")
         return
 
-    await safe_edit_message(progress_message, "✅ Processamento concluido. Vou enviar o PDF.")
+    await safe_edit_message(progress_message, "✅ Processamento concluido. Vou enviar o PDF e o TXT.")
     await send_pipeline_result(update, result)
 
 
@@ -129,6 +129,16 @@ async def send_pipeline_result(update: Update, result: PipelineResult) -> None:
             parse_mode="HTML",
         )
 
+    txt_path = Path(result.document.path).with_suffix(".txt")
+
+    if txt_path.exists():
+        await update.message.chat.send_action(ChatAction.UPLOAD_DOCUMENT)
+
+        with txt_path.open("rb") as txt_file:
+            await update.message.reply_document(
+                document=txt_file,
+                filename=txt_path.name,
+            )
 
 def build_result_caption(result: PipelineResult) -> str:
     topic = _best_topic_title(result)
@@ -255,6 +265,7 @@ def _format_progress_message(text: str) -> str:
         "A criar o documento final.": "📄 A criar o documento final.",
         "A preparar o ficheiro para entrega.": "📦 A preparar o ficheiro para entrega.",
         "Concluido. Vou enviar o PDF.": "✅ Concluido. Vou enviar o PDF.",
+        "Concluido. Vou enviar o PDF e o TXT.": "✅ Concluido. Vou enviar o PDF e o TXT.",
     }
     return mapping.get(text, text)
 

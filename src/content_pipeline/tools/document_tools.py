@@ -44,9 +44,11 @@ def create_document(
     stem, download_name = _build_document_names(document_title, run_id)
     markdown_path = directory / f"{stem}.md"
     pdf_path = directory / f"{stem}.pdf"
+    txt_path = directory / f"{stem}.txt"
 
     markdown = render_markdown(content, evaluation, document_title, document_summary)
     markdown_path.write_text(markdown, encoding="utf-8")
+    txt_path.write_text(markdown, encoding="utf-8")
     if REPORTLAB_AVAILABLE:
         _write_rich_pdf(pdf_path, content, evaluation, document_title, document_summary)
     else:
