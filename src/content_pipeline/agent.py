@@ -37,6 +37,7 @@ class ContentPipelineAgent:
         self,
         payload: str,
         status_callback: Callable[[str], None] | None = None,
+        image_style_instruction: str | None = None,
     ) -> PipelineResult:
         run_id = self._new_run_id()
 
@@ -81,6 +82,7 @@ class ContentPipelineAgent:
             iterations += 1
 
         self._notify(status_callback, "A gerar assets visuais para cada canal.")
+        self._notify(status_callback, "A gerar assets visuais para cada canal.")
         try:
             images = generate_social_images(
                 source=source,
@@ -90,6 +92,7 @@ class ContentPipelineAgent:
                 output_dir=self.config.generated_dir / "images",
                 public_dir=self.config.public_dir / "images",
                 public_base_url=self.config.public_base_url,
+                image_style_instruction=image_style_instruction,
             )
         except Exception:
             images = []
@@ -127,7 +130,7 @@ class ContentPipelineAgent:
             images=images,
         )
         self._remember(result)
-        self._notify(status_callback, "Concluido. Vou enviar o PDF.")
+        self._notify(status_callback, "Concluido. Vou enviar o PDF e o TXT.")
         return result
 
     def run_forever(self) -> None:

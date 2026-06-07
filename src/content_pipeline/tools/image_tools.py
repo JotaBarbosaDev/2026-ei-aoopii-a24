@@ -65,6 +65,7 @@ def generate_social_images(
     output_dir: Path | str,
     public_dir: Path | str,
     public_base_url: str | None = None,
+    image_style_instruction: str | None = None,
 ) -> list[ImageAsset]:
     load_local_env()
     if not _cloudflare_configured():
@@ -77,7 +78,7 @@ def generate_social_images(
 
     assets: list[ImageAsset] = []
     for spec in IMAGE_SPECS:
-        prompt = _build_image_prompt(spec, source, content, branding)
+        prompt = _build_image_prompt(spec,source,content,branding,image_style_instruction)
         image_bytes, extension = _run_cloudflare_image_generation(spec, prompt, run_id)
         file_name = _build_image_filename(source.title, spec.platform, run_id, extension)
         image_path = generated_dir / file_name
@@ -121,13 +122,14 @@ def _run_cloudflare_image_generation(
     payload = {
         "prompt": prompt,
         "negative_prompt": (
-            "blurry, low quality, watermark, extra text, paragraph text, logo, "
-            "collage, split panels, distorted anatomy, duplicated objects"
+            "blurry, low quality, watermark, visible text, letters, words, captions, "
+            "paragraph text, logo, brand logo, collage, split panels, distorted anatomy, "
+            "duplicated objects, generic corporate stock photo style when not requested"
         ),
         "width": spec.width,
         "height": spec.height,
-        "num_steps": int(os.getenv("CLOUDFLARE_IMAGE_STEPS", "6")),
-        "guidance": float(os.getenv("CLOUDFLARE_IMAGE_GUIDANCE", "4.5")),
+        "num_steps": int(os.getenv("CLOUDFLARE_IMAGE_STEPS", "8")),
+        "guidance": float(os.getenv("CLOUDFLARE_IMAGE_GUIDANCE", "5.5")),
         "seed": _seed_for(run_id, spec.platform),
     }
 
@@ -158,6 +160,7 @@ def _build_image_prompt(
     source: SourceContent,
     content: ContentBundle,
     branding: BrandingProfile,
+    image_style_instruction: str | None = None,
 ) -> str:
     platform_context = {
         "blog": content.blog_post,
@@ -165,22 +168,87 @@ def _build_image_prompt(
         "twitter": " ".join(content.twitter_thread[:2]),
         "newsletter": content.newsletter,
     }[spec.platform]
-    context_excerpt = shorten(platform_context.replace("\n", " "), width=220, placeholder="...")
+
+    context_excerpt = shorten(platform_context.replace("\n", " "), width=180, placeholder="...")
     key_points = "; ".join(source.key_points[:3])
-    tone = ", ".join(branding.tone_keywords[:4]) or branding.voice
+    style_instruction = _normalize_visual_style(image_style_instruction)
+    image_subject = _build_image_subject(source)
 
     return (
         f"Create a high-quality {spec.visual_goal}. "
-        f"Topic: {source.title}. "
+
+        f"MANDATORY IMAGE SUBJECT: {image_subject}. "
+        "The image must clearly represent this subject. "
+        "Do not create an unrelated image. "
+        "Do not replace the subject with the visual style. "
+
+        f"VISUAL STYLE TO APPLY TO THAT SUBJECT: {style_instruction}. "
+        "The style changes how the subject looks, but the subject must remain the same. "
+
+        f"Topic title: {source.title}. "
         f"Summary: {source.summary}. "
         f"Key points: {key_points}. "
-        f"Brand: {branding.company_name}. Audience: {branding.audience}. "
-        f"Voice and tone: {branding.voice}; keywords: {tone}. "
+        f"Brand: {branding.company_name}. "
+        f"Audience: {branding.audience}. "
         f"Platform context: {context_excerpt}. "
-        "Visual style: modern, polished, editorial, brand-aligned, professional, "
-        "high contrast, strong composition, no visible text overlay, no watermark."
-    )
 
+        "Use a clear main subject, strong composition, high quality details, and good lighting. "
+        "No visible text, no captions, no letters, no words, no watermark, no logo."
+    )
+     
+def _normalize_visual_style(image_style_instruction: str | None) -> str:
+    if not image_style_instruction or not image_style_instruction.strip():
+        return "realistic professional photography, social-media-ready, clean composition"
+
+    style = image_style_instruction.strip()
+    lower_style = style.lower()
+
+    hints: list[str] = []
+
+    if any(word in lower_style for word in ["realista", "realistic", "fotografia", "fotográfico", "photography"]):
+        hints.append(
+            "photorealistic photography, realistic materials, natural lighting, real-world camera look"
+        )
+
+    if any(word in lower_style for word in ["anime", "manga"]):
+        hints.append(
+            "anime illustration, manga-inspired, clean line art, vibrant colors, expressive lighting"
+        )
+
+    if any(word in lower_style for word in ["cartoon", "desenho animado"]):
+        hints.append(
+            "cartoon illustration, playful shapes, colorful, friendly, stylized characters and objects"
+        )
+
+    if any(word in lower_style for word in ["cyberpunk", "futurista", "futuristic", "neon"]):
+        hints.append(
+            "futuristic cyberpunk style, neon lighting, dark technological atmosphere, cinematic sci-fi mood"
+        )
+
+    if any(word in lower_style for word in ["minimalista", "minimalist", "simples", "clean"]):
+        hints.append(
+            "minimalist visual style, clean shapes, simple composition, modern and uncluttered"
+        )
+
+    if any(word in lower_style for word in ["3d", "render", "renderizado"]):
+        hints.append(
+            "high-quality 3D render, realistic depth, polished surfaces, studio lighting"
+        )
+
+    if hints:
+        return f"{'; '.join(hints)}. Extra user details: {style}"
+
+    return f"{style}. Follow this visual style literally and consistently."
+
+def _build_image_subject(source: SourceContent) -> str:
+    raw_input = getattr(source, "raw_input", "").strip()
+    title = getattr(source, "title", "").strip()
+    summary = getattr(source, "summary", "").strip()
+
+    if source.source_type == "link":
+        return title or summary or "the article topic"
+
+    return raw_input or title or summary or "the user requested topic"
 
 def _seed_for(run_id: str, platform: str) -> int:
     digest = hashlib.sha256(f"{run_id}:{platform}".encode("utf-8")).hexdigest()

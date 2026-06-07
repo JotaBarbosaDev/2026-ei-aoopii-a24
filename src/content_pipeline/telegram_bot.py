@@ -50,6 +50,7 @@ def build_application(agent: ContentPipelineAgent | None = None) -> Application:
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("cancel", cancel_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     application.add_handler(
         MessageHandler(
@@ -69,31 +70,71 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if update.message:
         await update.message.reply_text(build_help_message())
 
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("pending_topic", None)
+
+    if update.message:
+        await update.message.reply_text(
+            "Pedido cancelado. Podes enviar um novo tema quando quiseres."
+        )
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.text:
         return
 
+    user_text = update.message.text.strip()
+
+    if not user_text:
+        return
+
+    pending_topic = context.user_data.get("pending_topic")
+
+    if not pending_topic:
+        context.user_data["pending_topic"] = user_text
+
+        await update.message.reply_text(
+            "🎨 Perfeito. Agora diz-me em que estilo queres as imagens.\n\n"
+            "Exemplos:\n"
+            "- realista, fotografia profissional, luz natural\n"
+            "- anime futurista\n"
+            "- cartoon colorido\n"
+            "- cyberpunk escuro e tecnológico\n"
+            "- minimalista e moderno\n\n"
+            "Se quiseres cancelar, escreve /cancel."
+        )
+        return
+
+    topic = pending_topic
+    image_style = user_text
+    context.user_data.pop("pending_topic", None)
+
+    image_style_instruction = build_image_style_instruction(image_style)
+
     await update.message.chat.send_action(ChatAction.TYPING)
     agent = context.application.bot_data["agent"]
+
     progress_message = await update.message.reply_text(
-        "📥 Pedido recebido. Vou começar a processar agora."
+        "📥 Estilo recebido. Vou começar a processar agora."
     )
     progress_reporter = build_progress_reporter(progress_message)
 
     try:
-        result = await asyncio.to_thread(agent.run, update.message.text, progress_reporter)
+        result = await asyncio.to_thread(
+            agent.run,
+            topic,
+            progress_reporter,
+            image_style_instruction,
+        )
     except Exception as exc:
         await safe_edit_message(
             progress_message,
-            "⚠️ O processamento falhou. Verifica o link ou tenta enviar o texto diretamente.",
+            "⚠️ O processamento falhou. Verifica o tema ou tenta novamente.",
         )
         await update.message.reply_text(f"Erro a processar o pedido: {exc}")
         return
 
     await safe_edit_message(progress_message, "✅ Processamento concluido. Vou enviar o PDF e o TXT.")
     await send_pipeline_result(update, result)
-
 
 async def handle_unsupported_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message:
@@ -139,6 +180,9 @@ async def send_pipeline_result(update: Update, result: PipelineResult) -> None:
                 document=txt_file,
                 filename=txt_path.name,
             )
+
+def build_image_style_instruction(style_text: str) -> str:
+    return style_text.strip() or "realista, profissional, pronto para redes sociais"
 
 def build_result_caption(result: PipelineResult) -> str:
     topic = _best_topic_title(result)
