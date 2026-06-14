@@ -46,6 +46,62 @@ IMAGE_SPECS: tuple[ImageSpec, ...] = (
     ImageSpec("newsletter", "Newsletter", 1200, 632, "clean header visual for an email newsletter"),
 )
 
+STYLE_PRESETS = {
+    "anime": {
+        "positive": (
+            "Japanese anime illustration, 2D manga key visual, clean black line art, "
+            "cel shading, expressive anime lighting, vibrant colors, cinematic anime scene. "
+            "The image must look clearly anime, not realistic"
+        ),
+        "negative": (
+            "photorealistic, real photo, stock photo, realistic camera look, 3D render, "
+            "flat corporate illustration, minimalist poster"
+        ),
+    },
+    "futuristic": {
+        "positive": (
+            "futuristic sci-fi concept art, high-tech environment, holographic interfaces, "
+            "neon lighting, metallic surfaces, cyberpunk atmosphere, advanced technology scene. "
+            "The image must look clearly futuristic"
+        ),
+        "negative": (
+            "anime, manga, cartoon, old-fashioned, vintage, plain office, realistic stock photo, "
+            "minimalist poster"
+        ),
+    },
+    "illustration": {
+        "positive": (
+            "modern editorial illustration, vector art, flat design, clean geometric shapes, "
+            "bold simplified forms, graphic magazine composition. "
+            "The image must look clearly illustrated, not photographic"
+        ),
+        "negative": (
+            "photorealistic, real photo, anime, manga, cyberpunk, 3D render, messy details"
+        ),
+    },
+    "photographic": {
+        "positive": (
+            "realistic professional photography, documentary photo style, real-world camera look, "
+            "natural lighting, realistic materials, sharp details, authentic scene. "
+            "The image must look like a real photograph"
+        ),
+        "negative": (
+            "anime, manga, cartoon, illustration, vector art, flat design, 3D render, painting"
+        ),
+    },
+    "minimalist": {
+        "positive": (
+            "minimalist modern poster, simple symbolic visual, clean empty space, few elements, "
+            "elegant composition, subtle shapes, premium minimal design. "
+            "The image must look clearly minimalist"
+        ),
+        "negative": (
+            "busy scene, crowded composition, photorealistic detail, anime, manga, cyberpunk, "
+            "complex background, clutter"
+        ),
+    },
+}
+
 FIGMA_FRAMES_CACHE = PROJECT_ROOT / ".figma_cache"
 FIGMA_LOCAL_FRAMES_DIR = PROJECT_ROOT / "assets" / "figma_frames"
 FIGMA_API_TOKEN_ENV = "FIGMA_API_TOKEN"
@@ -79,7 +135,15 @@ def generate_social_images(
     assets: list[ImageAsset] = []
     for spec in IMAGE_SPECS:
         prompt = _build_image_prompt(spec,source,content,branding,image_style_instruction)
-        image_bytes, extension = _run_cloudflare_image_generation(spec, prompt, run_id)
+        debug_prompt_path = generated_dir / f"{run_id}-{spec.platform}-prompt.txt"
+        debug_prompt_path.write_text(prompt, encoding="utf-8")
+        negative_prompt = _build_negative_prompt(image_style_instruction)
+        image_bytes, extension = _run_cloudflare_image_generation(
+            spec,
+            prompt,
+            run_id,
+            negative_prompt,
+        )
         file_name = _build_image_filename(source.title, spec.platform, run_id, extension)
         image_path = generated_dir / file_name
         image_path.write_bytes(image_bytes)
@@ -114,6 +178,7 @@ def _run_cloudflare_image_generation(
     spec: ImageSpec,
     prompt: str,
     run_id: str,
+    negative_prompt: str,
 ) -> tuple[bytes, str]:
     account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
     api_token = os.getenv("CLOUDFLARE_API_TOKEN", "")
@@ -121,15 +186,11 @@ def _run_cloudflare_image_generation(
 
     payload = {
         "prompt": prompt,
-        "negative_prompt": (
-            "blurry, low quality, watermark, visible text, letters, words, captions, "
-            "paragraph text, logo, brand logo, collage, split panels, distorted anatomy, "
-            "duplicated objects, generic corporate stock photo style when not requested"
-        ),
+        "negative_prompt": negative_prompt,
         "width": spec.width,
         "height": spec.height,
-        "num_steps": int(os.getenv("CLOUDFLARE_IMAGE_STEPS", "8")),
-        "guidance": float(os.getenv("CLOUDFLARE_IMAGE_GUIDANCE", "5.5")),
+        "num_steps": int(os.getenv("CLOUDFLARE_IMAGE_STEPS", "16")),
+        "guidance": float(os.getenv("CLOUDFLARE_IMAGE_GUIDANCE", "8")),
         "seed": _seed_for(run_id, spec.platform),
     }
 
@@ -154,6 +215,17 @@ def _run_cloudflare_image_generation(
 
     return body, _extension_from_content_type(content_type, body)
 
+def _build_negative_prompt(image_style_instruction: str | None) -> str:
+    style = _get_style_preset(image_style_instruction)
+
+    base_negative = (
+        "blurry, low quality, watermark, visible text, letters, words, captions, "
+        "paragraph text, logo, brand logo, collage, split panels, distorted anatomy, "
+        "duplicated objects, unrelated subject, unrelated scene, off-topic image, "
+        "generic abstract background, random decorative elements"
+    )
+
+    return f"{base_negative}, {style['negative']}"
 
 def _build_image_prompt(
     spec: ImageSpec,
@@ -162,40 +234,67 @@ def _build_image_prompt(
     branding: BrandingProfile,
     image_style_instruction: str | None = None,
 ) -> str:
-    platform_context = {
-        "blog": content.blog_post,
-        "linkedin": content.linkedin_post,
-        "twitter": " ".join(content.twitter_thread[:2]),
-        "newsletter": content.newsletter,
-    }[spec.platform]
-
-    context_excerpt = shorten(platform_context.replace("\n", " "), width=180, placeholder="...")
-    key_points = "; ".join(source.key_points[:3])
-    style_instruction = _normalize_visual_style(image_style_instruction)
-    image_subject = _build_image_subject(source)
+    style = _get_style_preset(image_style_instruction)
+    visual_topic = _build_visual_topic(source, content)
 
     return (
-        f"Create a high-quality {spec.visual_goal}. "
+        f"{style['positive']}.\n\n"
 
-        f"MANDATORY IMAGE SUBJECT: {image_subject}. "
-        "The image must clearly represent this subject. "
-        "Do not create an unrelated image. "
-        "Do not replace the subject with the visual style. "
+        "Create an image about this exact topic:\n"
+        f"{visual_topic}\n\n"
 
-        f"VISUAL STYLE TO APPLY TO THAT SUBJECT: {style_instruction}. "
-        "The style changes how the subject looks, but the subject must remain the same. "
+        "The topic above is mandatory. "
+        "The image must show the main event, subject, place, person, object, or situation described in that topic. "
+        "Do not ignore the topic. "
+        "Do not create a generic social media image. "
+        "Do not create a random decorative scene.\n\n"
 
-        f"Topic title: {source.title}. "
-        f"Summary: {source.summary}. "
-        f"Key points: {key_points}. "
-        f"Brand: {branding.company_name}. "
-        f"Audience: {branding.audience}. "
-        f"Platform context: {context_excerpt}. "
+        f"Image purpose: {spec.visual_goal}.\n"
+        f"Image size: {spec.width}x{spec.height}.\n\n"
 
-        "Use a clear main subject, strong composition, high quality details, and good lighting. "
-        "No visible text, no captions, no letters, no words, no watermark, no logo."
+        "Composition requirements: "
+        "one clear main subject, relevant background, direct connection to the topic, strong composition, high quality.\n\n"
+
+        "Forbidden: visible text, words, captions, letters, watermark, logo, unrelated people, unrelated robots, "
+        "random city skyline, generic abstract background, random decorative elements, off-topic scene."
     )
      
+def _get_style_preset(image_style_instruction: str | None) -> dict[str, str]:
+    style_key = (image_style_instruction or "").strip().lower()
+
+    return STYLE_PRESETS.get(
+        style_key,
+        STYLE_PRESETS["photographic"],
+    )
+
+
+def _build_visual_topic(source: SourceContent, content: ContentBundle) -> str:
+    title = getattr(source, "title", "").strip()
+    summary = getattr(source, "summary", "").strip()
+    key_points = getattr(source, "key_points", []) or []
+    raw_input = getattr(source, "raw_input", "").strip()
+
+    topic_parts = []
+
+    if title:
+        topic_parts.append(title)
+
+    if summary:
+        topic_parts.append(summary)
+
+    if key_points:
+        topic_parts.append("; ".join(key_points[:3]))
+
+    if not topic_parts and raw_input and not raw_input.startswith(("http://", "https://")):
+        topic_parts.append(raw_input)
+
+    topic = " | ".join(topic_parts).strip()
+
+    if not topic:
+        topic = "the main topic of the article"
+
+    return shorten(topic.replace("\n", " "), width=420, placeholder="...")
+
 def _normalize_visual_style(image_style_instruction: str | None) -> str:
     if not image_style_instruction or not image_style_instruction.strip():
         return "realistic professional photography, social-media-ready, clean composition"
@@ -240,16 +339,40 @@ def _normalize_visual_style(image_style_instruction: str | None) -> str:
 
     return f"{style}. Follow this visual style literally and consistently."
 
-def _build_image_subject(source: SourceContent) -> str:
-    raw_input = getattr(source, "raw_input", "").strip()
+def _build_image_subject(source: SourceContent, content: ContentBundle) -> str:
     title = getattr(source, "title", "").strip()
     summary = getattr(source, "summary", "").strip()
+    key_points = "; ".join(getattr(source, "key_points", [])[:3])
 
-    if source.source_type == "link":
-        return title or summary or "the article topic"
+    blog_excerpt = shorten(
+        content.blog_post.replace("\n", " "),
+        width=220,
+        placeholder="...",
+    )
 
-    return raw_input or title or summary or "the user requested topic"
+    parts = []
 
+    if title:
+        parts.append(f"title: {title}")
+
+    if summary:
+        parts.append(f"summary: {summary}")
+
+    if key_points:
+        parts.append(f"key points: {key_points}")
+
+    if blog_excerpt:
+        parts.append(f"article content: {blog_excerpt}")
+
+    if parts:
+        return " | ".join(parts)
+
+    raw_input = getattr(source, "raw_input", "").strip()
+
+    if raw_input and not raw_input.startswith(("http://", "https://")):
+        return raw_input
+
+    return "the main topic of the article"
 def _seed_for(run_id: str, platform: str) -> int:
     digest = hashlib.sha256(f"{run_id}:{platform}".encode("utf-8")).hexdigest()
     return int(digest[:8], 16)

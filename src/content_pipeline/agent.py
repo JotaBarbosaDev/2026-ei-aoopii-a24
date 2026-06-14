@@ -82,7 +82,6 @@ class ContentPipelineAgent:
             iterations += 1
 
         self._notify(status_callback, "A gerar assets visuais para cada canal.")
-        self._notify(status_callback, "A gerar assets visuais para cada canal.")
         try:
             images = generate_social_images(
                 source=source,
