@@ -13,16 +13,17 @@ from .models import ImageAsset, PipelineResult
 from .tools import select_llm_provider
 
 try:
-    from telegram import Update
+    from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.constants import ChatAction
     from telegram.ext import (
-        Application,
-        ApplicationBuilder,
-        CommandHandler,
-        ContextTypes,
-        MessageHandler,
-        filters,
-    )
+    Application,
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+)
 except ImportError as exc:  # pragma: no cover - runtime dependency
     raise ImportError(
         "python-telegram-bot is required to run the Telegram bot. "
@@ -39,7 +40,28 @@ def run_telegram_bot(agent: ContentPipelineAgent | None = None) -> None:
     application = build_application(agent)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-
+IMAGE_STYLES = {
+    "futuristic": {
+        "label": "🚀 Futurista",
+        "prompt": "futuristic technology style, modern digital atmosphere, subtle neon accents, innovative and clean",
+    },
+    "illustration": {
+        "label": "🎨 Ilustração",
+        "prompt": "modern digital illustration style, clean shapes, expressive composition, brand-friendly visual",
+    },
+    "anime": {
+        "label": "🌸 Anime",
+        "prompt": "anime illustration style, manga-inspired, clean line art, vibrant colors",
+    },
+    "photographic": {
+        "label": "📸 Fotográfico",
+        "prompt": "realistic photographic style, natural lighting, high-detail image, authentic professional look",
+    },
+    "minimalist": {
+        "label": "✨ Minimalista",
+        "prompt": "minimalist style, clean layout, simple composition, elegant spacing, few visual elements",
+    },
+}
 def build_application(agent: ContentPipelineAgent | None = None) -> Application:
     load_local_env()
     token = required_env("TELEGRAM_BOT_TOKEN")
@@ -50,6 +72,8 @@ def build_application(agent: ContentPipelineAgent | None = None) -> Application:
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CallbackQueryHandler(handle_image_style_choice, pattern=r"^style:"))
+    application.add_handler(CommandHandler("cancel", cancel_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     application.add_handler(
         MessageHandler(
@@ -69,32 +93,154 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if update.message:
         await update.message.reply_text(build_help_message())
 
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    context.user_data.pop("pending_topic", None)
+    context.user_data.pop("pending_payload", None)
+
+    if update.message:
+        await update.message.reply_text(
+            "Pedido cancelado. Podes enviar um novo tema quando quiseres."
+        )
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.text:
         return
 
-    await update.message.chat.send_action(ChatAction.TYPING)
-    agent = context.application.bot_data["agent"]
-    progress_message = await update.message.reply_text(
+    user_text = update.message.text.strip()
+
+    if not user_text:
+        return
+
+    context.user_data["pending_payload"] = user_text
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                IMAGE_STYLES["futuristic"]["label"],
+                callback_data="style:futuristic",
+            ),
+            InlineKeyboardButton(
+                IMAGE_STYLES["illustration"]["label"],
+                callback_data="style:illustration",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                IMAGE_STYLES["anime"]["label"],
+                callback_data="style:anime",
+            ),
+            InlineKeyboardButton(
+                IMAGE_STYLES["photographic"]["label"],
+                callback_data="style:photographic",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                IMAGE_STYLES["minimalist"]["label"],
+                callback_data="style:minimalist",
+            ),
+        ],
+    ]
+
+    await update.message.reply_text(
+        "🎨 Escolhe o estilo visual para as imagens:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )   
+async def handle_image_style_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+
+    if not query or not query.message or not query.data:
+        return
+
+    await query.answer()
+
+    payload = context.user_data.get("pending_payload")
+
+    if not payload:
+        await query.edit_message_text(
+            "⚠️ Não encontrei nenhum pedido pendente. Envia novamente o texto ou link."
+        )
+        return
+
+    style_key = query.data.replace("style:", "", 1)
+    selected_style = IMAGE_STYLES.get(style_key)
+
+    if not selected_style:
+        await query.edit_message_text("⚠️ Estilo inválido. Tenta novamente.")
+        return
+
+    context.user_data.pop("pending_payload", None)
+
+    image_style_instruction = style_key
+
+    await query.edit_message_text(
+        f"🎨 Estilo escolhido: {selected_style['label']}\n\n"
         "📥 Pedido recebido. Vou começar a processar agora."
     )
+
+    await query.message.chat.send_action(ChatAction.TYPING)
+
+    agent = context.application.bot_data["agent"]
+    progress_message = query.message
     progress_reporter = build_progress_reporter(progress_message)
 
     try:
-        result = await asyncio.to_thread(agent.run, update.message.text, progress_reporter)
+        result = await asyncio.to_thread(
+            agent.run,
+            payload,
+            progress_reporter,
+            image_style_instruction,
+        )
     except Exception as exc:
         await safe_edit_message(
             progress_message,
-            "⚠️ O processamento falhou. Verifica o link ou tenta enviar o texto diretamente.",
+            "⚠️ O processamento falhou. Verifica o tema/link ou tenta novamente.",
         )
-        await update.message.reply_text(f"Erro a processar o pedido: {exc}")
+        await query.message.reply_text(f"Erro a processar o pedido: {exc}")
         return
 
-    await safe_edit_message(progress_message, "✅ Processamento concluido. Vou enviar o PDF.")
-    await send_pipeline_result(update, result)
+    await safe_edit_message(
+        progress_message,
+        "✅ Processamento concluido. Vou enviar o PDF e o TXT."
+    )
 
+    await send_pipeline_result_from_message(query.message, result)
+      
+async def send_pipeline_result_from_message(message: object, result: PipelineResult) -> None:
+    if result.images:
+        for image in result.images:
+            await message.chat.send_action(ChatAction.UPLOAD_PHOTO)
 
+            with Path(image.path).open("rb") as image_file:
+                await message.reply_photo(
+                    photo=image_file,
+                    caption=build_image_caption(image),
+                    parse_mode="HTML",
+                )
+
+    await message.chat.send_action(ChatAction.UPLOAD_DOCUMENT)
+
+    caption = build_result_caption(result)
+
+    with Path(result.document.path).open("rb") as document_file:
+        await message.reply_document(
+            document=document_file,
+            filename=result.document.download_name or Path(result.document.path).name,
+            caption=caption,
+            parse_mode="HTML",
+        )
+
+    txt_path = Path(result.document.path).with_suffix(".txt")
+
+    if txt_path.exists():
+        await message.chat.send_action(ChatAction.UPLOAD_DOCUMENT)
+
+        with txt_path.open("rb") as txt_file:
+            await message.reply_document(
+                document=txt_file,
+                filename=txt_path.name,
+            )    
+    
 async def handle_unsupported_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message:
         await update.message.reply_text(
@@ -129,6 +275,19 @@ async def send_pipeline_result(update: Update, result: PipelineResult) -> None:
             parse_mode="HTML",
         )
 
+    txt_path = Path(result.document.path).with_suffix(".txt")
+
+    if txt_path.exists():
+        await update.message.chat.send_action(ChatAction.UPLOAD_DOCUMENT)
+
+        with txt_path.open("rb") as txt_file:
+            await update.message.reply_document(
+                document=txt_file,
+                filename=txt_path.name,
+            )
+
+def build_image_style_instruction(style_text: str) -> str:
+    return style_text.strip() or "realista, profissional, pronto para redes sociais"
 
 def build_result_caption(result: PipelineResult) -> str:
     topic = _best_topic_title(result)
@@ -255,6 +414,7 @@ def _format_progress_message(text: str) -> str:
         "A criar o documento final.": "📄 A criar o documento final.",
         "A preparar o ficheiro para entrega.": "📦 A preparar o ficheiro para entrega.",
         "Concluido. Vou enviar o PDF.": "✅ Concluido. Vou enviar o PDF.",
+        "Concluido. Vou enviar o PDF e o TXT.": "✅ Concluido. Vou enviar o PDF e o TXT.",
     }
     return mapping.get(text, text)
 
